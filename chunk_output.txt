@@ -1,0 +1,942 @@
+
+--- Chunk 1 ---
+Playing With AI: How Do State-Of-The-Art
+Large Language Models Perform in the 1977
+Text-Based Adventure Game Zork?
+Berry Gerrits
+University of Twente, Enschede, The Netherlands
+b.gerrits@utwente.nl
+February 19, 2026
+Abstract
+In this positioning paper, we evaluate the problem-solving and reason-
+ing capabilities of contemporary Large Language Models (LLMs) through
+their performance inZork, the seminal text-based adventure game first
+released in 1977. The game’s dialogue-based structure provides a con-
+trolled environment for assessing how LLM-based chatbots interpret nat-
+ural language descriptions and generate appropriate action sequences to
+succeed in the game. We test the performance of leading proprietary
+models—ChatGPT, Claude, and Gemini—under both minimal and de-
+tailed instructions, measuring game progress through achieved scores as
+the primary metric. Our results reveal that all tested models achieve less
+than 10% completion on average, with even the best-performing model
+
+--- Chunk 2 ---
+the primary metric. Our results reveal that all tested models achieve less
+than 10% completion on average, with even the best-performing model
+(Claude Opus 4.5) reaching only approximately 75 out of 350 possible
+points. Notably, providing detailed game instructions offers no improve-
+ment, nor does enabling “extended thinking”. Qualitative analysis of the
+models’ reasoning processes reveals fundamental limitations: repeated un-
+successful actions suggesting an inability to reflect on one’s own thinking,
+inconsistent persistence of strategies, and failure to learn from previous at-
+tempts despite access to conversation history. These findings suggest sub-
+stantial limitations in current LLMs’ metacognitive abilities and problem-
+solving capabilities within the domain of text-based games, raising ques-
+tions about the nature and extent of their reasoning capabilities.
+1 Introduction
+Recent advances in Large Language Models (LLMs) have demonstrated impres-
+
+--- Chunk 3 ---
+tions about the nature and extent of their reasoning capabilities.
+1 Introduction
+Recent advances in Large Language Models (LLMs) have demonstrated impres-
+sive performance across a wide range of tasks, from code generation to idea
+generation, and from assistance in engineering problems to sparking creativity.
+These impressive capabilities have renewed optimistic predictions about the im-
+minent arrival of Artificial General Intelligence (AGI) or human-level AI [5].
+1
+arXiv:2602.15867v1  [cs.CL]  27 Jan 2026
+However, such predictions echo earlier waves of AI optimism that ultimately
+failed to materialize. As Mitchell [24] observes, the field of AI has cycled sev-
+eral times between periods of optimistic predictions and substantial investments
+(“AI spring”) and periods of disappointment, loss of confidence, and reduced
+funding (“AI winter”). From Herbert Simon’s 1960 declaration that “machines
+will be capable, within twenty years, of doing any work that a man can do”
+
+--- Chunk 4 ---
+funding (“AI winter”). From Herbert Simon’s 1960 declaration that “machines
+will be capable, within twenty years, of doing any work that a man can do”
+[32] to Marvin Minsky’s forecast that problems of creating artificial intelligence
+would be “substantially solved” within a generation [22], the history of AI is
+marked by predictions that have often overestimated the intelligence of AI and
+underestimated the complexity of human intelligence.
+One reason for these cycles is our limited understanding of the nature and
+complexity of intelligence itself [24]. A critical but often overlooked aspect of AI
+ismetacognition— the ability to monitor and reflect on one’s own thinking pro-
+cesses [10, 27]. As Mitchell [23] argues, when humans struggle with a problem,
+they eventually recognize that repeating ineffective strategies is futile and change
+their course of action accordingly. This self-awareness represents cognitive abil-
+
+--- Chunk 5 ---
+they eventually recognize that repeating ineffective strategies is futile and change
+their course of action accordingly. This self-awareness represents cognitive abil-
+ities that current AI systems seem to lack. The absence of such metacognitive
+capabilities relates to what Rota [33] termed the “barrier of meaning” in AI: the
+fundamental challenge of how computational systems can genuinely understand
+concepts rather than merely utilizing a “bag of tricks” that onlyseemsintelli-
+gent. The bigger the bag, the more “intelligent” AI seems to be. While LLMs
+can generate text with remarkable fluency, they lack genuine understanding of
+the concepts they process [3]. Without having interaction with the real-world
+like humans do, these systems struggle to adaptively reason when familiar pat-
+terns fail or training data falls short. For example, it does not take a human
+—even an infant— an excessive amount of training data (e.g., pictures of a cat)
+
+--- Chunk 6 ---
+terns fail or training data falls short. For example, it does not take a human
+—even an infant— an excessive amount of training data (e.g., pictures of a cat)
+to be able to recognize a cat, to generalize the concept of a cat, and subsequently
+be able to reliable distinguish a cat from other objects (e.g., a rabbit).
+This raises questions about the extent to which LLMs can demonstrate gen-
+uine understanding and problem-solving capabilities. Text-based games provide
+a testbed for investigating this question as there is little to no room for deploy-
+ing ‘tricks’ to genuinely understand the game’s mechanics as there is only sparse
+feedback. Rather, human players should leverage imagination, world knowledge,
+and adaptive reasoning to understand these fictional environments [25].
+Zork, originally developed at MIT and released in 1977 (later commercially
+released by Infocom [13] in 1980), represents a canonical example of interac-
+
+--- Chunk 7 ---
+Zork, originally developed at MIT and released in 1977 (later commercially
+released by Infocom [13] in 1980), represents a canonical example of interac-
+tive fiction that challenges players through pure textual interaction. The game
+presents players with descriptions of locations, objects, and situations entirely
+through natural language (e.g., “You are standing in an open field west of a
+white house, with a boarded front door”), and players respond by typing com-
+mands in natural language (e.g., “pick-up sword” or “go north”). Success in
+Zorkrequires players to construct and continuously update mental models of
+spatial environments—imagining room layouts, remembering connections be-
+tween locations, and tracking inventory—without any visual aids. Players must
+maintain a coherent state across long sequences of actions, recalling which puz-
+zles they have solved, which items they have collected, and how different objects
+2
+
+--- Chunk 8 ---
+maintain a coherent state across long sequences of actions, recalling which puz-
+zles they have solved, which items they have collected, and how different objects
+2
+might interact. Moreover, the game provides sparse feedback through text re-
+sponses, requiring players to learn from both successes and failures to refine
+their understanding of the game world’s rules and logic.
+What makesZorkparticularly relevant for testing LLMs is how it depends
+on distinctly human cognitive capacities. Human players leverage imagination
+to construct mental representations from textual descriptions, apply common-
+sense world knowledge to reason about object properties and causal relationships
+(understanding, for instance, that a lantern provides light, or that a sword can
+kill someone), and should continuously reflect on their own strategies, i.e., show
+some level of metacognition. As Montfort [25] states in his analysis of interactive
+
+--- Chunk 9 ---
+kill someone), and should continuously reflect on their own strategies, i.e., show
+some level of metacognition. As Montfort [25] states in his analysis of interactive
+fiction, these games reveal the sophisticated interplay between language com-
+prehension, spatial reasoning, planning, and problem-solving that characterizes
+human intelligence.
+This in stark contrast with the concept of Next Token Prediction (NTP)
+that has driven recent LLM successes. While an LLM might generate fluent
+text responses based on statistical patterns in its training data,Zorkarguably
+demands genuine comprehension: understanding that “the door is locked” im-
+plies the need for a key, that “the room is dark” requires a light source, or that
+certain puzzles have prerequisites that must be solved first. The question we
+address in this paper is whether contemporary LLMs can exhibit the flexible,
+goal-oriented problem-solving that text adventure games likeZorkdemands, or
+
+--- Chunk 10 ---
+address in this paper is whether contemporary LLMs can exhibit the flexible,
+goal-oriented problem-solving that text adventure games likeZorkdemands, or
+whether their performance reveals a lack of genuine understanding that Mitchell
+[24] identifies as characteristic of systems that have learned shortcuts rather than
+true conceptual understanding.
+2 Related Work
+Games have long served as benchmarks for AI capabilities, with particularly
+well-known examples including chess [6] and Go [31]. Most prominent successes
+involve games with well-defined state spaces and reward signals suitable for
+Reinforcement Learning (RL). Although impressive, Mitchell [24] notes, what
+appears to be progress toward AGI may instead reflect Dreyfus’s “first-step
+fallacy”—the mistaken assumption that narrow intelligence exists on a contin-
+uum with general intelligence: “It was like claiming that the first monkey that
+climbed a tree was making progress towards landing on the moon” [9]. Deep
+
+--- Chunk 11 ---
+uum with general intelligence: “It was like claiming that the first monkey that
+climbed a tree was making progress towards landing on the moon” [9]. Deep
+Blue’s chess-playing achievement was indeed hailed as “the first step of an AI
+revolution” [2], yet such narrow achievements have not translated into broader
+intelligence.
+Text-based adventure games present fundamentally different challenges than
+these well-structured games: they require natural language understanding, com-
+mon sense reasoning about physical objects and spatial relationships, and the
+ability to form and test hypotheses about game mechanics [7]. Recent work has
+explored LLM performance on text-based games with mixed results. Cˆ ot´ e et al.
+[7] introduced TextWorld as a platform for training RL agents on procedurally
+generated text games, though most approaches rely on fine-tuning rather than
+3
+zero-shot reasoning. Ammanabrolu and Riedl [1] demonstrated that incorpo-
+
+--- Chunk 12 ---
+generated text games, though most approaches rely on fine-tuning rather than
+3
+zero-shot reasoning. Ammanabrolu and Riedl [1] demonstrated that incorpo-
+rating commonsense knowledge graphs improves agent performance, suggesting
+that pure language models lack sufficient world knowledge. More recently, re-
+searchers have shown that while state-of-the-art LLMs can play some text-based
+games effectively, they struggle with games requiring long-term planning and
+spatial reasoning [35]—precisely the capabilities central toZork.
+2.1 Reasoning in LLMs
+With respect to the general reasoning capabilities of LLMs, recent research
+has investigated various prompting and reasoning frameworks to enhance LLM
+problem-solving. Wei et al. [34] introduced Chain-of-Thought (CoT) prompt-
+ing, showing that encouraging step-by-step reasoning improves performance on
+arithmetic and commonsense reasoning tasks. Yao et al. [36] extended this with
+
+--- Chunk 13 ---
+ing, showing that encouraging step-by-step reasoning improves performance on
+arithmetic and commonsense reasoning tasks. Yao et al. [36] extended this with
+Tree of Thoughts, enabling exploration of multiple reasoning paths. However,
+Kambhampati et al. [15] argue that LLMs cannot generate executable plans
+and lack to ability to show self-critique, even when using CoT prompting.
+The abovementioned limitations relate to “Moravec’s paradox”—the counter-
+intuitive finding that tasks humans find difficult (chess, complex mathematics)
+are often easier for AI, while tasks humans find trivial (recognizing objects,
+navigating spaces, understanding context) remain challenging for machines [26].
+This paradox is particularly relevant to games likeZork, where success depends
+less on computational power than on the kind of commonsense understanding
+that humans acquire naturally through interaction with the physical world.
+The question of whether LLMs possess genuine understanding remains open
+
+--- Chunk 14 ---
+that humans acquire naturally through interaction with the physical world.
+The question of whether LLMs possess genuine understanding remains open
+for debate. Bender and Koller [3] argue that language models trained only on
+linguistic patterns cannot acquire meaning without grounding in the real world.
+Marcus and Davis [20] similarly contend that deep learning systems lack the
+robust, compositional understanding characteristic of human cognition. While
+some researchers argue that sufficiently large models may develop emergent
+understanding [5], critics maintain that pattern matching—however sophisti-
+cated—differs fundamentally from comprehension [24].
+Also Mitchell warns against the danger of “wishful mnemonics” [21]—using
+terms like “understands,” “learns,” or “thinks” to describe AI systems in ways
+that unconsciously shape our perception of their capabilities and lead us to
+overestimate their intelligence.
+2.2 Metacognition in LLMs
+
+--- Chunk 15 ---
+that unconsciously shape our perception of their capabilities and lead us to
+overestimate their intelligence.
+2.2 Metacognition in LLMs
+While metacognition has been extensively studied in human psychology [10,
+29], relatively little work addresses metacognitive capabilities in AI systems.
+Some researchers have explored confidence calibration in neural networks [11]
+and uncertainty estimation [17], but these approaches differ fundamentally from
+human metacognition’s adaptive, reflective qualities.
+Mitchell [23, 24] argues that current AI systems lack the self-monitoring
+necessary to recognize when they are “stuck” and need to change strategies—a
+4
+limitation that may be particularly evident in open-ended problem-solving con-
+texts likeZork. Recent work by Yin et al. [37] on LLM self-evaluation found
+that models can assess their own outputs but also highlight that there is a
+considerable gap between the capabilities of the models and human profiency.
+
+--- Chunk 16 ---
+that models can assess their own outputs but also highlight that there is a
+considerable gap between the capabilities of the models and human profiency.
+This connects to the broader challenge of common sense in AI, which Oren
+Etzioni has called “the dark matter of artificial intelligence” [16]—a quality
+whose effects are visible everywhere but whose nature remains elusive. Common
+sense encompasses not just vast knowledge about the world, but the ability to
+use that knowledge flexibly to recognize situations, make predictions, and guide
+actions [8, 18].
+In this paper, we contribute to the debate by evaluating how state-of-the-art
+LLMs perform onZork, a game that requires players to build coherent mental
+representations, learn from feedback, and adaptively solve a series of puzzles.
+Instead of deploying an RL approach that trains agents through millions of
+episodes on a specific game, we examine LLMs in a zero-shot setting—mirroring
+
+--- Chunk 17 ---
+Instead of deploying an RL approach that trains agents through millions of
+episodes on a specific game, we examine LLMs in a zero-shot setting—mirroring
+how humans can pick up and play a new game without extensive prior training.
+By examining where and how these models succeed or fail, we aim to shed
+light on current limitations in LLMs’ reasoning, spatial understanding, memory
+utilization, and metacognitive capabilities.
+3 Methodology
+We conduct our experiments usingZork I: The Great Underground Empire, the
+first instalment of the commercially released Zork trilogy, originally developed
+at MIT in 1977 and later released by Infocom in 1980. While all games in
+the trilogy are considered challenging, the sequels (Zork IIandZork III) are
+arguably more difficult, making Zork I a suitable starting point for this research.
+The game is accessed through a browser-based implementation [14]. A custom-
+built Python script connects the LLM and the game environment. The script
+
+--- Chunk 18 ---
+The game is accessed through a browser-based implementation [14]. A custom-
+built Python script connects the LLM and the game environment. The script
+captures the game’s output after each move, forwards it to the LLM, receives
+the model’s command, and inputs this command back into the game. The LLM
+has access to the full conversation of the current run.
+We evaluate six LLM-based chatbots from three major providers:
+•Anthropic:Claude Opus 4.5 and Claude Sonnet 4.5, with an additional
+variant of Opus 4.5 with ‘extended thinking’ enabled.
+•OpenAI:ChatGPT 5.2 in two configurations: ‘standard thinking’ and
+‘extended thinking’.
+•Google:Gemini 3 with ‘thinking’ enabled.
+Each model plays the game independently, with no informationexplicitly
+shared between runs or models. Each model does have access to previous chats
+which the model may or may not use in subsequent chats. Importantly, general-
+purpose LLMs have not been specifically trained or fine-tuned onZorkor similar
+
+--- Chunk 19 ---
+which the model may or may not use in subsequent chats. Importantly, general-
+purpose LLMs have not been specifically trained or fine-tuned onZorkor similar
+text adventure games (like RL approaches typically do to play games). While
+it is possible that descriptions ofZorkor walkthroughs exist within the models’
+5
+training data, we do not provide any explicit game solutions in our prompts.
+This setup allows us to evaluate the models’ ability for genuine problem-solving
+rather than memorization.
+We distinguish between two instructions given by the initial prompt to the
+LLM. Thebasic promptprovides minimal instruction, informing the model only
+that it is playing the gameZork, that the user will provide game outputs,
+and that the model should respond exclusively with valid game commands. No
+background information about the game mechanics, objectives, or strategies are
+provided. Theadvanced promptoffers comprehensive guidance derived from the
+
+--- Chunk 20 ---
+background information about the game mechanics, objectives, or strategies are
+provided. Theadvanced promptoffers comprehensive guidance derived from the
+originalZork Iinstruction manual. This includes detailed information about
+movement and navigation commands, syntax, combat mechanics, communica-
+tion with non-player characters, and general gameplay strategies. The prompt
+also provides context about the game’s setting and objective: exploring the
+Great Underground Empire, collecting treasures, and depositing them in the
+trophy case. In both conditions, models are explicitly instructed not to use the
+restartcommand and are given the option to respond with “I give up” if they
+believe they are irreversibly stuck. Both prompts are provided in Appendix A.
+Each model is tested under both prompts with five independent runs per
+model-prompt combination, resulting in a total of 40 experimental runs. Runs
+are conducted sequentially with fresh conversation contexts to prevent any
+
+--- Chunk 21 ---
+model-prompt combination, resulting in a total of 40 experimental runs. Runs
+are conducted sequentially with fresh conversation contexts to prevent any
+carry-over effects between sessions (apart from access to chat history). For each
+run, we set the maximum number of moves to 500 and we collect the following
+data:
+•Number of moves.The total count of commands issued before the run
+terminates. A run ends when the model issues a “give up” command,
+the player dies in the game, the game is successfully completed, or the
+maximum number of moves is reached.
+•Score.Zork Iawards points as a rough indicator of progress in the game.
+That is, points are deducted when the player shows regression instead of
+progress. The maximum achievable score is 350 points. We record the
+score as an indicator of overall progress.
+•Conversation log.The full transcript of game outputs and model re-
+sponses is saved for further analysis.
+4 Results
+
+--- Chunk 22 ---
+score as an indicator of overall progress.
+•Conversation log.The full transcript of game outputs and model re-
+sponses is saved for further analysis.
+4 Results
+In this section, we quantitively discuss the performance of LLMs playingZork.
+In Section 5, we further discuss the “thinking” and “reasoning” capabilities.
+Figure 1 summarizes the key numerical results. On the left-hand side, the
+average final score is shown and reveals large differences between the studied
+LLM-based chatbots. First, note that all LLMs did not exceed a score of ap-
+proximately 75 points, far below the required 350 points to finish the game.
+In other words, a maximum of∼20% progress was achieved, while on aver-
+age less than∼10% of the game was completed. Second, the results suggest
+that Claude Opus 4.5 outperforms both Gemini 3 and ChatGPT 5.2, indicating
+6
+Figure 1: Left: Average number of points with standard error bars. Right:
+Average number of moves per game with standard errors bars. (I) denotes the
+
+--- Chunk 23 ---
+6
+Figure 1: Left: Average number of points with standard error bars. Right:
+Average number of moves per game with standard errors bars. (I) denotes the
+basic prompt and (II) denotes the advanced prompt.
+that the models provided by Anthropic are more capable of playing the game.
+The difference between the variants of Claude appear minimal. Interestingly,
+there seems to be no difference between using the basic prompt (indicated by
+I) and the advanced prompt (indicated by II), while you may suspect that de-
+tailed instructions on the internal mechanics of the game, including multiple
+key gameplay insights, should improve performance. For human players, we
+suspect that access to a detailed manual has a significant impact on the ability
+to play the gameZork. Lastly, the results suggest that there is no difference
+when ‘thinking’ is enabled across all three providers. Although Figure 1 does
+not show the difference between ‘non-thinking’ and ‘thinking’ for Gemini and
+
+--- Chunk 24 ---
+when ‘thinking’ is enabled across all three providers. Although Figure 1 does
+not show the difference between ‘non-thinking’ and ‘thinking’ for Gemini and
+ChatGPT, we found similar results as using Claude, i.e. minimal differences.
+Regarding Claude, Opus 4.5 seems to slightly outperform Sonnet 4.5, but ‘think-
+ing’ did not result in increased performance. These results suggest that what is
+labelled as ’thinking’ does not translate to measurable improvements in game-
+play performance, raising questions about whether these mechanisms capture
+the adaptive, metacognitive processes that enable human players to learn and
+improve at games likeZork.
+Although the number of moves does not say much about the ability to play
+the game, the right-hand side of Figure 1 provides some insight in when the game
+ended. Recall that the game ends when (i) the maximum score is achieved, (ii)
+the player dies, or (iii) the LLM provides the command ‘I give up’. Interestingly,
+
+--- Chunk 25 ---
+ended. Recall that the game ends when (i) the maximum score is achieved, (ii)
+the player dies, or (iii) the LLM provides the command ‘I give up’. Interestingly,
+although ChatGPT performed the worst in terms of overall game progress, it
+refuses to give up, as indicated by the average number of moves until (ii) or (iii)
+are reached. Indeed, further inspection reveals that ChatGPT often finds itself
+in long series of similar commands resulting in no measurable progress (i.e., the
+7
+player was stuck), hinting at no useful form of metacognition. To a lesser extent
+this also holds for the other LLMs, where —due to further advancing in the
+game— they found themselves more likely to be killed, either due to bad luck
+or due to improper game play (e.g., not killing a monster while its unarmed and
+stunned on the ground). Further analysis shows that only Claude issued the
+command ‘I give up’ when it appeared to find itself in a vicious circle it could
+not escape.
+5 Discussion
+
+--- Chunk 26 ---
+stunned on the ground). Further analysis shows that only Claude issued the
+command ‘I give up’ when it appeared to find itself in a vicious circle it could
+not escape.
+5 Discussion
+In this section, a more qualitative discussion is presented on the reasoning and
+thinking capabilities of the LLMs under test. Starting at the worst performing
+model —ChatGPT— analysis of the chat history and reasoning explanations
+reveals distinct departures from human-like reasoning patterns. For example,
+in the beginning of the game there is a mailbox with a leaflet in it. All chatbots
+open the mailbox and read the leaflet to “possibly obtain relevant information to
+play the game”, which seems reasonable. Although the leaflet does not provide
+much information to play the game, on several occasions ChatGPT returns
+to the mailbox and attempts to open it, only to find it empty. This does
+not suggest an intelligent form of thinking; any human player would remember
+
+--- Chunk 27 ---
+to the mailbox and attempts to open it, only to find it empty. This does
+not suggest an intelligent form of thinking; any human player would remember
+that the mailbox was already opened. ChatGPT showed this kind of repetitive
+behaviour in multiple situations during the game. This also explains the large
+number of moves (due to repeated actions) whilst limited progress was made in
+the game, as discussed in Section 4.
+Moreover, it seems that none of the chatbots learn from their previous runs
+even though they have access to the chat and conversation history. That is,
+mistakes made during one iteration are often repeated later in the same itera-
+tion or in following iterations, suggesting a lack of metacognition — the ability
+to monitor and reflect on one’s own thinking processes [10, 27]. Although no
+human players were included in the experimental setup, one would assume that
+a human player of any skill level would not repeatedly reconsider actions that
+
+--- Chunk 28 ---
+human players were included in the experimental setup, one would assume that
+a human player of any skill level would not repeatedly reconsider actions that
+have proved unsuccessful. The inability to learn from previous runs may relate
+to known LLM limitations in utilizing long contexts. Liu et al. [19] demon-
+strated that LLMs struggle to use information in the middle of long contexts,
+a phenomenon they term ‘lost in the middle.’ In ourZorkexperiments, rele-
+vant information about failed strategies from earlier in the conversation may be
+effectively invisible to the model when making decisions dozens of moves later.
+Let us turn to the ‘best’ performing LLM in our study: Claude Opus 4.5
+and take a closer look at the thinking-enabled version. As an illustration, the
+thought process by Claude shown in Example 1 seems reasonable at first glance.
+8
+Example 1
+Game output:This is part of a maze of twisty little passages, all alike.
+What command should I enter?
+
+--- Chunk 29 ---
+thought process by Claude shown in Example 1 seems reasonable at first glance.
+8
+Example 1
+Game output:This is part of a maze of twisty little passages, all alike.
+What command should I enter?
+Thought process: I’m in the maze and trying to find my way through.
+The maze in Zork I has a specific solution. Let me try to navigate it. I
+should keep dropping items to mark my path or try different directions
+systematically
+> GO SOUTH
+The thought process suggests that Claude knows the solution to the maze
+inZork I, which could be the case if the solution was part of the training
+data. However, in the same thought it also states it should “systematically
+try differ directions”, an approach that would be rendered moot if the solution
+were already known. If it actually does not know the solution to the maze,
+stating that the maze has a specific solution seems superfluous asanymaze
+has a specific solution. Moreover, it also suggest to “keep dropping items to
+
+--- Chunk 30 ---
+stating that the maze has a specific solution seems superfluous asanymaze
+has a specific solution. Moreover, it also suggest to “keep dropping items to
+mark my path”, an approach that seems redundant as the chatbot can easily
+retrace its own steps based on the chat history. Furthermore, any human player
+would probably not deploy this strategy as these items are typically required to
+progress in the game. Indeed, one instance shows that Claude drops a lantern to
+mark its path, only to find itself later in the game entering a dark area without
+the ability to light the area with the lantern it had previously discarded.
+Example 2 shows the ability of Claude to reason about which item to drop
+based on the value it represents.
+Example 2
+Game output:Your load is too heavy.
+What command should I enter?
+Thought process: I need to drop something to make room. The paper or
+leaflet might be droppable items since they’re less valuable. Let me drop
+the leaflet first.
+> DROP LEAFLET
+
+--- Chunk 31 ---
+Thought process: I need to drop something to make room. The paper or
+leaflet might be droppable items since they’re less valuable. Let me drop
+the leaflet first.
+> DROP LEAFLET
+This thought process seems reasonable enough to assume that the chatbot
+“knows what it’s doing”, but given the previous example and the relatively
+straightforward chain of thought, it might also suggest a form of pattern match-
+ing and merely utilizing a “bag of tricks” that only appears intelligent, recalling
+Rota’s “barrier of meaning” in AI [33].
+Example 3 (Page 11) shows what seems to be reasonable thinking but fails
+to deliver on that promise. Note that in this example, the player had previously
+already used the trap door, thus should know it crashes shut after entering.
+The player seems to realize it should return to the trophy case to drop collected
+9
+treasures, as instructed as the main goal of the game in the initial advanced
+
+--- Chunk 32 ---
+The player seems to realize it should return to the trophy case to drop collected
+9
+treasures, as instructed as the main goal of the game in the initial advanced
+prompt. Although the player is able to reach the trophy case, it does so with-
+out any collected treasures, as all potential treasures (which items qualify as
+treasures are not known a priori) were dropped to enable climbing the chim-
+ney. Moreover, the player goes back down through the trap door, finding itself
+once again locked in the basement. From here on it could decide to go back up
+the chimney with different items (i.e., possible treasures), yet fails to do so in
+subsequent steps (not shown in Example 3).
+This discussion and the provided examples suggest that commonsense rea-
+soning and genuine metacognition appear severely limited in the context of text-
+based gameplay, with LLM-models showing behaviour that differs substantially
+from expected human behaviour. However, the extent to which these domain-
+
+--- Chunk 33 ---
+based gameplay, with LLM-models showing behaviour that differs substantially
+from expected human behaviour. However, the extent to which these domain-
+specific limitations reflect broader constraints remains an open question.
+6 Limitations
+This positioning paper has several limitations that should be acknowledged. Our
+experimental design includes five runs per setting, which limits statistical power
+and prevents definitive claims about the absence of differences between settings.
+Moreover, we lack human player baselines, making it difficult to contextualize
+whether an average∼10% completion represents failure or reasonable perfor-
+mance on a genuinely difficult game. We cannot rule out training data contam-
+ination, as models may have encountered Zork walkthroughs during training,
+although the established performance suggests little to no contamination. Our
+qualitative analysis draws on illustrative examples rather than systematic analy-
+
+--- Chunk 34 ---
+although the established performance suggests little to no contamination. Our
+qualitative analysis draws on illustrative examples rather than systematic analy-
+sis across all conversation logs, and we did not systematically explore alternative
+prompt formulations that might improve performance. These limitations sug-
+gest our findings should be viewed as raising questions about LLM reasoning
+capabilities exemplified through the gameZorkrather than providing definitive
+answers. We present this work to spark discussion and encourage follow-up
+studies
+7 Conclusions and Future Research
+This study evaluated whether state-of-the-art Large Language Models (LLMs)
+demonstrate genuine problem-solving capabilities through their performance on
+Zork, a text-based adventure game that requires spatial reasoning, planning, and
+adaptive learning. Our findings reveal substantial limitations in current LLMs’
+reasoning abilities that raise fundamental questions about their path toward
+
+--- Chunk 35 ---
+adaptive learning. Our findings reveal substantial limitations in current LLMs’
+reasoning abilities that raise fundamental questions about their path toward
+human-level intelligence. Quantitatively, all tested models achieved approxi-
+mately 10% game completion on average, with the best performer (Claude Opus
+4.5) reaching∼20%. This performance occurred despite the models’ sophisti-
+cated language generation capabilities and, in some cases, access to“extending
+thinking”. Enabling “thinking” or “reasoning” across all three providers (Anth-
+10
+Example 3
+Game output:Dropped.
+What command should I enter?
+Thought process: I need to go up the chimney. Let me try dropping more
+items to be light enough.
+> DROP BAG
+Game output:Dropped.
+What command should I enter?
+Thought process: I’ve dropped the painting and bag. Let me try going
+up the chimney now with just the sword and lantern.
+> GO UP
+Game output:Kitchen
+What command should I enter?
+
+--- Chunk 36 ---
+Thought process: I’ve dropped the painting and bag. Let me try going
+up the chimney now with just the sword and lantern.
+> GO UP
+Game output:Kitchen
+What command should I enter?
+Thought process: I made it up through the chimney to the Kitchen. Now
+I should get the treasures I have out to the trophy case in the living room.
+First let me go to the living room to deposit what I have (just the sword
+currently)
+> GO WEST
+Game output:Living Room
+What command should I enter?
+Thought process: I’m in the living room with the trophy case. I should
+open the trap door so I can go back down later, and also I should deposit
+treasures in the trophy case. But first let me open the trap door to keep
+it accessible.
+> OPEN TRAP DOOR
+Game output:The door reluctantly opens to reveal a rickety staircase
+descending into darkness.
+What command should I enter?
+Thought process: I’ve opened the trap door from above. Now I should
+go back down to the studio to retrieve my treasures, bring them up, and
+
+--- Chunk 37 ---
+descending into darkness.
+What command should I enter?
+Thought process: I’ve opened the trap door from above. Now I should
+go back down to the studio to retrieve my treasures, bring them up, and
+deposit them in the trophy case.
+> GO DOWN
+Game output:The trap door crashes shut, and you hear someone bar-
+ring it. Cellar
+11
+ropic, OpenAI, and Google) failed to improve game progress, suggesting that
+what these systems label as “thinking” does not adequately capture the cognitive
+processes we associate with human problem-solving.
+Qualitative analysis of the models’ behaviour revealed this issue. All models
+demonstrated limited metacognition—the ability to monitor one’s own thinking
+and recognize when a strategy is failing. They often continued attempting
+unsuccessful actions without adapting their approach, and failed to learn from
+mistakes across multiple game sessions. These patterns point to a fundamental
+distinction between pattern matching and genuine understanding. The models
+
+--- Chunk 38 ---
+mistakes across multiple game sessions. These patterns point to a fundamental
+distinction between pattern matching and genuine understanding. The models
+can generate fluent, seemingly reasonable explanations of their actions, but these
+explanations often contradict their actual behaviour.
+Our findings align with Mitchell’s warning about the “first-step fallacy”,
+mistaking achievements in specific domains for progress toward general intel-
+ligence. While LLMs demonstrate impressive capabilities in many domains,
+their failure atZorkreveals the current limitations of LLMs. These are likely
+not quantitative limitations that might be resolved with larger models or more
+training data, but potentially a qualitative difference in how these systems pro-
+cess information versus how humans understand and reason about the world.
+On the other hand, one might argue whether human-like understanding and
+reasoning is even a necessary condition toward general intelligence or whether
+
+--- Chunk 39 ---
+On the other hand, one might argue whether human-like understanding and
+reasoning is even a necessary condition toward general intelligence or whether
+some alien-like intelligence (however hard to imagine) also suffices.
+As the AI community continues to develop more powerful language models,
+it is important to maintain realistic assessments of their capabilities and limi-
+tations. The impressive linguistic fluency of LLMs should not be mistaken for
+human-like intelligence, particularly in domains requiring the kind of adaptive,
+metacognitive problem-solving that even easy-to-play games likeZorkdemand.
+Understanding these limitations is essential not only for advancing AI research
+but also for developing appropriate applications and setting realistic expecta-
+tions about the path toward artificial general intelligence. Our findings suggest
+that current LLMs face substantial challenges in domains requiring adaptive
+
+--- Chunk 40 ---
+tions about the path toward artificial general intelligence. Our findings suggest
+that current LLMs face substantial challenges in domains requiring adaptive
+reasoning and metacognition, but the scope and implications of the limitations
+of this study warrant further investigation.
+Future research should address the limitations of this study in several ways.
+First, incorporating human player baselines across varying expertise levels would
+provide context for interpreting model performance and distinguishing between
+task difficulty and model-specific failures. Second, systematic quantification
+of error types across all conversation logs—including the frequency of repeti-
+tive actions, instances of learning within and across sessions, and categories of
+logical failures—would move beyond illustrative examples to establish a more
+rigorous understanding of the behaviour. Third, comparative analysis examin-
+ing whether the same models exhibit similar metacognitive limitations on games
+
+--- Chunk 41 ---
+rigorous understanding of the behaviour. Third, comparative analysis examin-
+ing whether the same models exhibit similar metacognitive limitations on games
+comparable toZorkand other reasoning benchmarks would clarify whether the
+observed failures are specific to text-based games or reflect more general rea-
+soning limitations.
+12
+References
+[1] Ammanabrolu, P., & Riedl, M. O. (2019). Playing text-adventure games
+with graph-based deep reinforcement learning.Proceedings of the 2019 Con-
+ference of the North American Chapter of the Association for Computa-
+tional Linguistics: Human Language Technologies, 3557–3565.
+[2] Aron, J. (2016). AI landmark as Googlebot beats top human at ancient
+game of Go.New Scientist.
+[3] Bender, E. M., & Koller, A. (2020). Climbing towards NLU: On meaning,
+form, and understanding in the age of data.Proceedings of the 58th Annual
+Meeting of the Association for Computational Linguistics, 5185–5198.
+
+--- Chunk 42 ---
+form, and understanding in the age of data.Proceedings of the 58th Annual
+Meeting of the Association for Computational Linguistics, 5185–5198.
+[4] Brown, T. B., Mann, B., Ryder, N., Subbiah, M., Kaplan, J., Dhariwal, P.,
+Neelakantan, A., Shyam, P., Sastry, G., Askell, A., Agarwal, S., Herbert-
+Voss, A., Krueger, G., Henighan, T., Child, R., Ramesh, A., Ziegler, D. M.,
+Wu, J., Winter, C., Hesse, C., Chen, M., Sigler, E., Litwin, M., Gray, S.,
+Chess, B., Clark, J., Berner, C., McCandlish, S., Radford, A., Sutskever,
+I., & Amodei, D. (2020). Language models are few-shot learners.Advances
+in Neural Information Processing Systems, 33, 1877–1901.
+[5] Bubeck, S., Chandrasekaran, V., Eldan, R., Gehrke, J., Horvitz, E., Kamar,
+E., Lee, P., Lee, Y.T., Li, Y., Lundberg, S., Nori, H., Palingi, H., Riberio,
+M.T., & Zhang, Y. (2023). Sparks of artificial general intelligence: Early
+experiments with GPT-4.arXiv preprint arXiv:2303.12712.
+
+--- Chunk 43 ---
+M.T., & Zhang, Y. (2023). Sparks of artificial general intelligence: Early
+experiments with GPT-4.arXiv preprint arXiv:2303.12712.
+[6] Campbell, M., Hoane Jr, A. J., & Hsu, F. H. (2002). Deep Blue.Artificial
+Intelligence, 134(1-2), 57–83.
+[7] Cˆ ot´ e, M.-A., K´ ad´ ar,´A., Yuan, X., Kybartas, B., Barnes, T., Fine, E.,
+Moore, J., Tao, R. Y., Hausknecht, M., El Asri, L., Adada, M., Tay, W.,
+& Trischler, A. (2018). TextWorld: A learning environment for text-based
+games.Proceedings of the Workshop on Computer Games, 41–75.
+[8] Davis, E., & Marcus, G. (2015). Commonsense reasoning and commonsense
+knowledge in artificial intelligence.Communications of the ACM, 58(9), 92–
+103.
+[9] Dreyfus, H. L. (2012). A history of first step fallacies.Minds and Machines,
+22(2), 87–99.
+[10] Flavell, J. H. (1979). Metacognition and cognitive monitoring: A new area
+of cognitive–developmental inquiry.American Psychologist, 34(10), 906–
+911.
+
+--- Chunk 44 ---
+22(2), 87–99.
+[10] Flavell, J. H. (1979). Metacognition and cognitive monitoring: A new area
+of cognitive–developmental inquiry.American Psychologist, 34(10), 906–
+911.
+[11] Guo, C., Pleiss, G., Sun, Y., & Weinberger, K. Q. (2017). On calibration of
+modern neural networks.Proceedings of the 34th International Conference
+on Machine Learning, 1321–1330.
+13
+[12] Haugeland, J. (1985).Artificial intelligence: The very idea. Cambridge,
+MA: MIT Press.
+[13] Infocom (1980).Zork I: The Great Underground Empire[Computer game].
+Infocom.
+[14] iplayif.com (n.d.). Interactive Fiction player. Available at:https:
+//iplayif.com/?story=https%3A%2F%2Feblong.com%2Finfocom%
+2Fgamefiles%2Fzork1-r119-s880429.z3[Accessed: January 2026].
+[15] Kambhampati, S., Valmeekam, K., Guan, L., Verma, M., Stechly,
+K., Bhambri, S., Saldyt, L., & Murthy, A. (2024). LLMs can’t plan,
+but can help planning in LLM-modulo frameworks.arXiv preprint
+arXiv:2402.01817.
+
+--- Chunk 45 ---
+K., Bhambri, S., Saldyt, L., & Murthy, A. (2024). LLMs can’t plan,
+but can help planning in LLM-modulo frameworks.arXiv preprint
+arXiv:2402.01817.
+[16] Knight, W. (2018). The US military wants to teach AI some basic common
+sense.MIT Technology Review.
+[17] Lakshminarayanan, B., Pritzel, A., & Blundell, C. (2017). Simple and scal-
+able predictive uncertainty estimation using deep ensembles.Advances in
+Neural Information Processing Systems,30, 6402-6413.
+[18] Levesque, H. J. (2017).Common sense, the Turing test, and the quest for
+real AI. Cambridge, MA: MIT Press.
+[19] Liu, N. F., Lin, K., Hewitt, J., Paranjape, A., Bevilacqua, M., Petroni,
+F., & Liang, P. (2023). Lost in the middle: How language models use long
+contexts.Transactions of the Association for Computational Linguistics,
+12, 157–173.
+[20] Marcus, G., & Davis, E. (2019).Rebooting AI: Building artificial intelli-
+gence we can trust. New York: Pantheon Books.
+
+--- Chunk 46 ---
+12, 157–173.
+[20] Marcus, G., & Davis, E. (2019).Rebooting AI: Building artificial intelli-
+gence we can trust. New York: Pantheon Books.
+[21] McDermott, D. (1976). Artificial intelligence meets natural stupidity.ACM
+SIGART Bulletin, (57), 4–9.
+[22] Minsky, M. L. (1967).Computation: Finite and infinite machines. Engle-
+wood Cliffs, NJ: Prentice-Hall.
+[23] Mitchell, M. (2019).Artificial intelligence: A guide for thinking humans.
+New York: Farrar, Straus and Giroux.
+[24] Mitchell, M. (2021). Why AI is harder than we think.arXiv preprint
+arXiv:2104.12871.
+[25] Montfort, N. (2005).Twisty little passages: An approach to interactive
+fiction. Cambridge, MA: MIT Press.
+[26] Moravec, H. (1988).Mind children: The future of robot and human intelli-
+gence. Cambridge, MA: Harvard University Press.
+14
+[27] Nelson, T. O., & Narens, L. (1990). Metamemory: A theoretical framework
+and new findings.Psychology of Learning and Motivation, 26, 125–173.
+
+--- Chunk 47 ---
+gence. Cambridge, MA: Harvard University Press.
+14
+[27] Nelson, T. O., & Narens, L. (1990). Metamemory: A theoretical framework
+and new findings.Psychology of Learning and Motivation, 26, 125–173.
+[28] OpenAI (2023). GPT-4 technical report.arXiv preprint arXiv:2303.08774.
+[29] Schraw, G., & Dennison, R. S. (1994). Assessing metacognitive awareness.
+Contemporary Educational Psychology, 19(4), 460–475.
+[30] Shinn, N., Cassano, F., Gopinath, A., Narasimhan, K., & Yao, S. (2023).
+Reflexion: Language agents with verbal reinforcement learning.arXiv
+preprint arXiv:2303.11366.
+[31] Silver, D., Huang, A., Maddison, C. J., Guez, A., Sifre, L., van den Driess-
+che, G., Schrittwieser, J., Antonoglou, I., Panneershelvam, V., Lanctot, M.,
+Dieleman, S., Grewe, D., Nham, J., Kalchbrenner, N., Sutskever, I., Lilli-
+crap, T., Leach, M., Kavukcuoglu, K., Graepel, T., & Hassabis, D. (2016).
+Mastering the game of Go with deep neural networks and tree search.Na-
+ture, 529(7587), 484–489.
+
+--- Chunk 48 ---
+crap, T., Leach, M., Kavukcuoglu, K., Graepel, T., & Hassabis, D. (2016).
+Mastering the game of Go with deep neural networks and tree search.Na-
+ture, 529(7587), 484–489.
+[32] Simon, H. A. (1960).The new science of management decision. New York:
+Harper and Brothers.
+[33] Rota, G. C. (1985). The barrier of meaning.Letters in Mathematical
+Physics 10, 97-99
+[34] Wei, J., Wang, X., Schuurmans, D., Bosma, M., Ichter, B., Xia, F., Chi,
+E., Le, Q., & Zhou, D. (2022). Chain-of-thought prompting elicits reason-
+ing in large language models.Advances in Neural Information Processing
+Systems,35, 24824-24837.
+[35] Yao, S., Zhao, J., Yu, D., Du, N., Shafran, I., Narasimhan, K., & Cao,
+Y. (2023). ReAct: Synergizing reasoning and acting in language models.
+International Conference on Learning Representations.
+[36] Yao, S., Yu, D., Zhao, J., Shafran, I., Griffiths, T. L., Cao, Y., &
+Narasimhan, K. (2023). Tree of thoughts: Deliberate problem solving with
+
+--- Chunk 49 ---
+[36] Yao, S., Yu, D., Zhao, J., Shafran, I., Griffiths, T. L., Cao, Y., &
+Narasimhan, K. (2023). Tree of thoughts: Deliberate problem solving with
+large language models.arXiv preprint arXiv:2305.10601.
+[37] Yin, Z., Sun, Q., Guo, Q., Wu, J., Qiu, X., & Huang, X. (2023).
+Do large language models know what they don’t know?arXiv preprint
+arXiv:2305.18153.
+15
+A Appendix
+A.1 Basic Initial Prompt
+I’m going to play the text adventure game Zork with you. I’ll paste
+the game’s output after each move, and you should respond with
+ONLY the command to enter into the game—nothing else, do not
+include any explanation in the final command.
+It is a tough game, so don’t give up easily, but if you believe you
+are completely stuck, reply with “I give up”. You are definitely not
+allowed to use the command ‘restart’.
+Are you ready? Reply with just “ready” if you understand.
+A.2 Advanced Initial Prompt
+ZORK I: The Great Underground Empire—Game Knowl-
+edge Base
+
+--- Chunk 50 ---
+allowed to use the command ‘restart’.
+Are you ready? Reply with just “ready” if you understand.
+A.2 Advanced Initial Prompt
+ZORK I: The Great Underground Empire—Game Knowl-
+edge Base
+You are playing Zork I, a text-based interactive fiction game by
+Infocom. Your goal is to explore the ruins of the Great Underground
+Empire, collect treasures, and deposit them in your trophy case to
+earn points.
+MOVEMENT & NA VIGA TION:
+•Use compass directions:NORTH(N),SOUTH(S),EAST(E),WEST
+(W),NORTHEAST(NE),NORTHWEST(NW),SOUTHEAST(SE),SOUTHWEST
+(SW)
+•UseUP(U),DOWN(D),IN, andOUT
+•Important: GoingNORTHfrom location A to B doesn’t always
+meanSOUTHreturns you to A—passages can twist and curve
+•Draw/maintain a mental map of all 10 possible directions plus
+IN/OUT
+INTERACTING WITH OBJECTS:
+•TAKE [object]orPICK UP [object]—acquire items
+•DROP [object]—release items
+•EXAMINE [object]—get detailed descriptions (often reveals clues)
+•LOOK INSIDE/BEHIND/UNDER [object]—inspect thoroughly
+
+--- Chunk 51 ---
+•TAKE [object]orPICK UP [object]—acquire items
+•DROP [object]—release items
+•EXAMINE [object]—get detailed descriptions (often reveals clues)
+•LOOK INSIDE/BEHIND/UNDER [object]—inspect thoroughly
+•OPEN/CLOSE [object]—manipulate containers and doors
+•PUT [object] IN [container]—place items
+•Use multiple objects:TAKE LAMP, SWORD, KEYorDROP ALL
+EXCEPT LAMP
+•The wordALLrefers to all visible objects not inside something
+else
+16
+COMBA T & SUR VIV AL:
+•KILL/ATTACK [creature] WITH [weapon]
+•DIAGNOSE—check your physical condition
+•You need a light source—the underground is dark and danger-
+ous
+•Watch out for the thief (skilled pickpocket and ruthless oppo-
+nent) and grues (they lurk in darkness)
+T ALKING TO CHARACTERS:
+•Format:[CHARACTER], [COMMAND]
+•Example:TROLL, GIVE ME THE AXE
+•Can chain commands:GNOME, TAKE THE KEY THEN FOLLOW ME
+USEFUL COMMANDS:
+•INVENTORY(I)—list what you’re carrying
+•LOOK(L)—full description of current location
+•WAIT(Z)—let time pass
+•SCORE—check progress and rank
+
+--- Chunk 52 ---
+USEFUL COMMANDS:
+•INVENTORY(I)—list what you’re carrying
+•LOOK(L)—full description of current location
+•WAIT(Z)—let time pass
+•SCORE—check progress and rank
+•SAVE/RESTORE—save and load game state
+•AGAIN(G)—repeat previous action
+COMPLEX SENTENCES:
+•Chain actions withTHENor periods:NORTH. READ BOOK. DROP
+IT THEN BURN IT WITH TORCH
+•Ask questions:WHAT IS A GRUE?orWHERE IS THE ZORKMID?
+•Use quotes for speech:SAY "HELLO SAILOR"
+KEY GAMEPLA Y INSIGHTS:
+•Most objects you can pick up are important—either treasures
+or puzzle solutions
+•Read everything carefully: labels, engravings, books contain
+vital clues
+•Multiple routes exist to complete the game; not all puzzles must
+be solved
+•Some puzzles have multiple solutions
+•Solving one puzzle often provides items/information needed for
+another
+•The game recognizes words by their first 6 letters only
+•If the game doesn’t recognize a word, that thing probably isn’t
+important to the puzzle
+
+--- Chunk 53 ---
+another
+•The game recognizes words by their first 6 letters only
+•If the game doesn’t recognize a word, that thing probably isn’t
+important to the puzzle
+•Dangerous or strange actions may provide clues—experimentation
+is encouraged
+17
+•Treasures should be deposited in your trophy case for points
+SETTING:The Great Underground Empire was founded by Dun-
+canthrax the Bellicose in 659 GUE, who discovered vast natural
+caverns populated by gnomes, trolls, and other magical races. The
+Frobozz Magic Construction Company expanded these caverns tremen-
+dously. The empire collapsed in 883 GUE after centuries of excessive
+taxation and royal decadence. You are now exploring these aban-
+doned ruins, seeking the legendary Treasures of Zork.
+ST AR TING HINT:The game begins at a white house with a
+mailbox. Try:OPEN MAILBOX, thenREAD LEAFLET.
+I’ll paste the game’s output after each move, and you should respond
+with ONLY the command to enter into the game—nothing else, do
+
+--- Chunk 54 ---
+mailbox. Try:OPEN MAILBOX, thenREAD LEAFLET.
+I’ll paste the game’s output after each move, and you should respond
+with ONLY the command to enter into the game—nothing else, do
+not include any explanation in the final command.
+It is a tough game, so don’t give up easily, but if you believe you
+are completely stuck, reply with “I give up”. You are definitely not
+allowed to use the command ‘restart’.
+Are you ready? Reply with just “ready” if you understand.
+18
