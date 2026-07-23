@@ -14,6 +14,7 @@ router = APIRouter(prefix="/config", tags=["Configuration"])
 class ConfigUpdate(BaseModel):
     system_prompt: str
     welcome_message: str
+    similarity_metric: str = "cosine"
 
 @router.get("")
 def get_config():
@@ -21,15 +22,30 @@ def get_config():
     return {
         "active_pdf_name": config.get("active_pdf_name", "Research_paper.pdf"),
         "system_prompt": config.get("system_prompt", ""),
-        "welcome_message": config.get("welcome_message", "")
+        "welcome_message": config.get("welcome_message", ""),
+        "similarity_metric": config.get("similarity_metric", "cosine")
     }
 
 @router.post("")
 def update_config(data: ConfigUpdate):
     config = settings.load_rag_config()
+    old_metric = config.get("similarity_metric", "cosine")
+    
     config["system_prompt"] = data.system_prompt
     config["welcome_message"] = data.welcome_message
+    if data.similarity_metric:
+        config["similarity_metric"] = data.similarity_metric
+        
     settings.save_rag_config(config)
+    
+    if data.similarity_metric and data.similarity_metric != old_metric:
+        try:
+            db = VectorStore()
+            db.recreate_collection(data.similarity_metric)
+            print(f"[Config] Recreated collection with new similarity space: {data.similarity_metric}")
+        except Exception as e:
+            print(f"[Config] Failed to recreate collection: {e}")
+            
     return {"status": "success", "message": "Configuration updated successfully"}
 
 @router.post("/upload")

@@ -1,4 +1,5 @@
 import os
+import time
 from litellm import completion
 from fastapi import APIRouter
 from pydantic import BaseModel
@@ -10,6 +11,20 @@ from app.rag.vector_store import VectorStore
 from app.rag.retriever import Retriever
 
 from app.core.config import settings
+
+def calculate_similarity_percentage(score: float, metric: str) -> float:
+    # Compute similarity based on space metric configured
+    if metric == "cosine":
+        # Cosine distance ranges from [0, 2], so similarity is 1.0 - distance
+        sim = 1.0 - score
+    elif metric == "ip":
+        # Inner Product Distance is 1.0 - inner product
+        sim = 1.0 - score
+    else:  # "l2"
+        # Euclidean distance can exceed 1, normalize roughly
+        sim = 1.0 - (score / 2.0)
+    
+    return max(0.0, min(100.0, sim * 100.0))
 
 router = APIRouter()
 
@@ -109,10 +124,12 @@ def _run_primary_model(primary_model: str, question: str, context: str, history:
 
 
 def ChatService(question: str, model_name: str, history: List[MessageParam] = None):
+    total_start = time.time()
     db = VectorStore()
     config = settings.load_rag_config()
     pdf_path = config.get("active_pdf_path")
     pdf_name = config.get("active_pdf_name", "Research_paper.pdf")
+    similarity_metric_type = config.get("similarity_metric", "cosine")
     
     is_empty = db.count() == 0
     
@@ -120,18 +137,24 @@ def ChatService(question: str, model_name: str, history: List[MessageParam] = No
     if is_empty:
         # Step 1: Text extraction
         try:
+            step_start = time.time()
             from app.rag.text_extract import PDFLoader
             if not pdf_path or not os.path.exists(pdf_path):
                 raise FileNotFoundError(f"PDF file not found at {pdf_path}")
             loader = PDFLoader()
             text = loader.load_pdf(pdf_path)
-            pipeline_steps.append({"name": "text_extract", "status": "done"})
+            pipeline_steps.append({
+                "name": "text_extract", 
+                "status": "done",
+                "latency_ms": round((time.time() - step_start) * 1000, 2)
+            })
         except Exception:
             pipeline_steps.append({"name": "text_extract", "status": "failed"})
             raise
             
         # Step 2: Chunking
         try:
+            step_start = time.time()
             from langchain_text_splitters import RecursiveCharacterTextSplitter
             splitter = RecursiveCharacterTextSplitter(
                 chunk_size=1000,
@@ -139,22 +162,32 @@ def ChatService(question: str, model_name: str, history: List[MessageParam] = No
                 separators=["\n\n", "\n", " ", ""],
             )
             chunks = splitter.split_text(text)
-            pipeline_steps.append({"name": "chunking", "status": "done"})
+            pipeline_steps.append({
+                "name": "chunking", 
+                "status": "done",
+                "latency_ms": round((time.time() - step_start) * 1000, 2)
+            })
         except Exception:
             pipeline_steps.append({"name": "chunking", "status": "failed"})
             raise
             
         # Step 3: Embed chunks
         try:
+            step_start = time.time()
             embeddings_service = Embeddings()
             embeddings = embeddings_service.embed_texts(chunks)
-            pipeline_steps.append({"name": "embedding", "status": "done"})
+            pipeline_steps.append({
+                "name": "embedding", 
+                "status": "done",
+                "latency_ms": round((time.time() - step_start) * 1000, 2)
+            })
         except Exception:
             pipeline_steps.append({"name": "embedding", "status": "failed"})
             raise
             
         # Step 4: Vector store
         try:
+            step_start = time.time()
             ids = [f"chunk_{i}" for i in range(len(chunks))]
             metadatas = [{"source": pdf_path, "page": i + 1} for i in range(len(chunks))]
             db.add_documents(
@@ -163,37 +196,52 @@ def ChatService(question: str, model_name: str, history: List[MessageParam] = No
                 embeddings=embeddings,
                 metadatas=metadatas,
             )
-            pipeline_steps.append({"name": "vector_store", "status": "done"})
+            pipeline_steps.append({
+                "name": "vector_store", 
+                "status": "done",
+                "latency_ms": round((time.time() - step_start) * 1000, 2)
+            })
         except Exception:
             pipeline_steps.append({"name": "vector_store", "status": "failed"})
             raise
     else:
         pipeline_steps.extend([
-            {"name": "text_extract", "status": "cached"},
-            {"name": "chunking", "status": "cached"},
-            {"name": "embedding", "status": "cached"},
-            {"name": "vector_store", "status": "cached"},
+            {"name": "text_extract", "status": "cached", "latency_ms": 0.0},
+            {"name": "chunking", "status": "cached", "latency_ms": 0.0},
+            {"name": "embedding", "status": "cached", "latency_ms": 0.0},
+            {"name": "vector_store", "status": "cached", "latency_ms": 0.0},
         ])
         
     # Step 5: Query embedding
     try:
+        step_start = time.time()
         embeddings_service = Embeddings()
         query_embedding = embeddings_service.embed_query(question)
-        pipeline_steps.append({"name": "query_embedding", "status": "done"})
+        pipeline_steps.append({
+            "name": "query_embedding", 
+            "status": "done",
+            "latency_ms": round((time.time() - step_start) * 1000, 2)
+        })
     except Exception:
         pipeline_steps.append({"name": "query_embedding", "status": "failed"})
         raise
         
     # Step 6: Similarity search
     try:
+        step_start = time.time()
         results = db.query(query_embedding, top_k=3)
-        pipeline_steps.append({"name": "similarity_search", "status": "done"})
+        pipeline_steps.append({
+            "name": "similarity_search", 
+            "status": "done",
+            "latency_ms": round((time.time() - step_start) * 1000, 2)
+        })
     except Exception:
         pipeline_steps.append({"name": "similarity_search", "status": "failed"})
         raise
         
     # Step 7: Top-k
     try:
+        step_start = time.time()
         documents = results["documents"][0]
         metadatas = results["metadatas"][0]
         distances = results["distances"][0]
@@ -201,20 +249,30 @@ def ChatService(question: str, model_name: str, history: List[MessageParam] = No
         retrieved_chunks = []
         parts = []
         for doc, metadata, score in zip(documents, metadatas, distances):
+            sim_pct = calculate_similarity_percentage(score, similarity_metric_type)
             retrieved_chunks.append({
                 "text": doc,
                 "page": metadata.get("page"),
                 "source": metadata.get("source"),
                 "score": score,
+                "similarity_percentage": sim_pct,
+                "metric": similarity_metric_type.upper()
             })
             parts.append(
                 f"[Source: {metadata.get('source')}, Page: {metadata.get('page')}]\n{doc}"
             )
         context_str = "\n\n".join(parts) if parts else "No relevant context found."
-        pipeline_steps.append({"name": "top_k", "status": "done"})
+        pipeline_steps.append({
+            "name": "top_k", 
+            "status": "done",
+            "latency_ms": round((time.time() - step_start) * 1000, 2)
+        })
     except Exception:
         pipeline_steps.append({"name": "top_k", "status": "failed"})
         raise
+
+    rag_end = time.time()
+    rag_latency = round((rag_end - total_start) * 1000, 2)
 
     model_choice = model_name.lower().strip()
     if model_choice == "fast":
@@ -224,6 +282,7 @@ def ChatService(question: str, model_name: str, history: List[MessageParam] = No
         primary_model = "gemini/gemini-2.5-flash"
         fallback_model = "groq/llama-3.1-8b-instant"
 
+    llm_start = time.time()
     try:
         response, used_model, retry_attempts = _run_primary_model(primary_model, question, context_str, history)
     except Exception:
@@ -231,12 +290,21 @@ def ChatService(question: str, model_name: str, history: List[MessageParam] = No
         used_model = fallback_model
         retry_attempts = 3
 
+    model_end = time.time()
+    llm_latency = round((model_end - llm_start) * 1000, 2)
+    total_latency = round((model_end - total_start) * 1000, 2)
+
     return {
         "answer": response.choices[0].message.content,
         "model_name": used_model,
         "retry_attempts": retry_attempts,
         "retrieved_chunks": retrieved_chunks,
         "pipeline_steps": pipeline_steps,
+        "latency_metrics": {
+            "total_latency_ms": total_latency,
+            "rag_latency_ms": rag_latency,
+            "llm_latency_ms": llm_latency,
+        }
     }
 
 

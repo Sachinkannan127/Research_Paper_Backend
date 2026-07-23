@@ -9,7 +9,7 @@ from app.rag.chunk import chunk_text
 from app.rag.embeddings import Embeddings
 from app.rag.vector_store import VectorStore
 from app.rag.retriever import Retriever
-from app.routes.chat import MessageParam, ChatRequest
+from app.routes.chat import MessageParam, ChatRequest, calculate_similarity_percentage
 from app.core.config import settings
 
 router = APIRouter()
@@ -114,10 +114,12 @@ def _stream_answer(model_name: str, question: str, history: List[MessageParam] =
     from app.rag.text_extract import PDFLoader
     from langchain_text_splitters import RecursiveCharacterTextSplitter
 
+    total_start = time.time()
     db = VectorStore()
     config = settings.load_rag_config()
     pdf_path = config.get("active_pdf_path")
     pdf_name = config.get("active_pdf_name", "Research_paper.pdf")
+    similarity_metric_type = config.get("similarity_metric", "cosine")
     
     # 1. Check ingest status
     is_empty = db.count() == 0
@@ -129,10 +131,12 @@ def _stream_answer(model_name: str, question: str, history: List[MessageParam] =
             yield f"Error: PDF file not found at {pdf_path}\n"
             return
         try:
+            step_start = time.time()
             loader = PDFLoader()
             text = loader.load_pdf(pdf_path)
-            yield "__STEP__:text_extract:done\n"
-            time.sleep(0.15)
+            lat = round((time.time() - step_start) * 1000, 2)
+            yield f"__STEP__:text_extract:done:{lat}\n"
+            time.sleep(0.05)
         except Exception as e:
             yield f"Error during text extraction: {str(e)}\n"
             return
@@ -140,14 +144,16 @@ def _stream_answer(model_name: str, question: str, history: List[MessageParam] =
         # Step 2: Chunking
         yield "__STEP__:chunking:active\n"
         try:
+            step_start = time.time()
             splitter = RecursiveCharacterTextSplitter(
                 chunk_size=1000,
                 chunk_overlap=200,
                 separators=["\n\n", "\n", " ", ""],
             )
             chunks = splitter.split_text(text)
-            yield "__STEP__:chunking:done\n"
-            time.sleep(0.15)
+            lat = round((time.time() - step_start) * 1000, 2)
+            yield f"__STEP__:chunking:done:{lat}\n"
+            time.sleep(0.05)
         except Exception as e:
             yield f"Error during text chunking: {str(e)}\n"
             return
@@ -155,10 +161,12 @@ def _stream_answer(model_name: str, question: str, history: List[MessageParam] =
         # Step 3: Embed chunks
         yield "__STEP__:embedding:active\n"
         try:
+            step_start = time.time()
             embeddings_service = Embeddings()
             embeddings = embeddings_service.embed_texts(chunks)
-            yield "__STEP__:embedding:done\n"
-            time.sleep(0.15)
+            lat = round((time.time() - step_start) * 1000, 2)
+            yield f"__STEP__:embedding:done:{lat}\n"
+            time.sleep(0.05)
         except Exception as e:
             yield f"Error during embedding: {str(e)}\n"
             return
@@ -166,6 +174,7 @@ def _stream_answer(model_name: str, question: str, history: List[MessageParam] =
         # Step 4: Vector store
         yield "__STEP__:vector_store:active\n"
         try:
+            step_start = time.time()
             ids = [f"chunk_{i}" for i in range(len(chunks))]
             metadatas = [{"source": pdf_path, "page": i + 1} for i in range(len(chunks))]
             db.add_documents(
@@ -174,29 +183,28 @@ def _stream_answer(model_name: str, question: str, history: List[MessageParam] =
                 embeddings=embeddings,
                 metadatas=metadatas,
             )
-            yield "__STEP__:vector_store:done\n"
-            time.sleep(0.15)
+            lat = round((time.time() - step_start) * 1000, 2)
+            yield f"__STEP__:vector_store:done:{lat}\n"
+            time.sleep(0.05)
         except Exception as e:
             yield f"Error during vector store: {str(e)}\n"
             return
     else:
-        # Already ingested - use cached status
-        yield "__STEP__:text_extract:cached\n"
-        time.sleep(0.15)
-        yield "__STEP__:chunking:cached\n"
-        time.sleep(0.15)
-        yield "__STEP__:embedding:cached\n"
-        time.sleep(0.15)
-        yield "__STEP__:vector_store:cached\n"
-        time.sleep(0.15)
+        # Already ingested - use cached status with 0.0 latency yield
+        yield "__STEP__:text_extract:cached:0.0\n"
+        yield "__STEP__:chunking:cached:0.0\n"
+        yield "__STEP__:embedding:cached:0.0\n"
+        yield "__STEP__:vector_store:cached:0.0\n"
 
     # Step 5: Query embedding
     yield "__STEP__:query_embedding:active\n"
     try:
+        step_start = time.time()
         embeddings_service = Embeddings()
         query_embedding = embeddings_service.embed_query(question)
-        yield "__STEP__:query_embedding:done\n"
-        time.sleep(0.15)
+        lat = round((time.time() - step_start) * 1000, 2)
+        yield f"__STEP__:query_embedding:done:{lat}\n"
+        time.sleep(0.05)
     except Exception as e:
         yield f"Error generating query embedding: {str(e)}\n"
         return
@@ -204,10 +212,11 @@ def _stream_answer(model_name: str, question: str, history: List[MessageParam] =
     # Step 6: Similarity search
     yield "__STEP__:similarity_search:active\n"
     try:
-        # Get query results from DB
+        step_start = time.time()
         results = db.query(query_embedding, top_k=3)
-        yield "__STEP__:similarity_search:done\n"
-        time.sleep(0.15)
+        lat = round((time.time() - step_start) * 1000, 2)
+        yield f"__STEP__:similarity_search:done:{lat}\n"
+        time.sleep(0.05)
     except Exception as e:
         yield f"Error during similarity search: {str(e)}\n"
         return
@@ -215,6 +224,7 @@ def _stream_answer(model_name: str, question: str, history: List[MessageParam] =
     # Step 7: Top-k
     yield "__STEP__:top_k:active\n"
     try:
+        step_start = time.time()
         documents = results["documents"][0]
         metadatas = results["metadatas"][0]
         distances = results["distances"][0]
@@ -222,18 +232,22 @@ def _stream_answer(model_name: str, question: str, history: List[MessageParam] =
         retrieved_chunks = []
         parts = []
         for doc, metadata, score in zip(documents, metadatas, distances):
+            sim_pct = calculate_similarity_percentage(score, similarity_metric_type)
             retrieved_chunks.append({
                 "text": doc,
                 "page": metadata.get("page"),
                 "source": metadata.get("source"),
                 "score": score,
+                "similarity_percentage": sim_pct,
+                "metric": similarity_metric_type.upper()
             })
             parts.append(
                 f"[Source: {metadata.get('source')}, Page: {metadata.get('page')}]\n{doc}"
             )
         context = "\n\n".join(parts) if parts else "No relevant context found."
-        yield "__STEP__:top_k:done\n"
-        time.sleep(0.1)
+        lat = round((time.time() - step_start) * 1000, 2)
+        yield f"__STEP__:top_k:done:{lat}\n"
+        time.sleep(0.05)
     except Exception as e:
         yield f"Error extracting top-k: {str(e)}\n"
         return
@@ -245,9 +259,14 @@ def _stream_answer(model_name: str, question: str, history: List[MessageParam] =
     except Exception as e:
         print("Error serializing chunks:", e)
 
+    rag_end = time.time()
+    rag_latency = round((rag_end - total_start) * 1000, 2)
+
     # Stream LLM response
     primary_model, fallback_model = _choose_models(model_name)
     attempts = 0
+    llm_start = time.time()
+    success = False
 
     while attempts < 3:
         attempts += 1
@@ -257,19 +276,32 @@ def _stream_answer(model_name: str, question: str, history: List[MessageParam] =
                 delta = getattr(chunk.choices[0].delta, "content", None)
                 if delta:
                     yield delta
-            return
+            success = True
+            break
         except Exception as error:
             if not _is_rate_limit_error(error):
                 break
 
-    try:
-        yield f"\n\nModel: {fallback_model}\nAttempts: 1\n\n"
-        for chunk in _run_model_stream(fallback_model, question, context, history):
-            delta = getattr(chunk.choices[0].delta, "content", None)
-            if delta:
-                yield delta
-    except Exception as error:
-        yield f"\n\nError streaming from fallback model ({fallback_model}): {str(error)}"
+    if not success:
+        try:
+            yield f"\n\nModel: {fallback_model}\nAttempts: 1\n\n"
+            for chunk in _run_model_stream(fallback_model, question, context, history):
+                delta = getattr(chunk.choices[0].delta, "content", None)
+                if delta:
+                    yield delta
+        except Exception as error:
+            yield f"\n\nError streaming from fallback model ({fallback_model}): {str(error)}"
+
+    model_end = time.time()
+    llm_latency = round((model_end - llm_start) * 1000, 2)
+    total_latency = round((model_end - total_start) * 1000, 2)
+    
+    latency_val = {
+        "total_latency_ms": total_latency,
+        "rag_latency_ms": rag_latency,
+        "llm_latency_ms": llm_latency
+    }
+    yield f"\n__LATENCY_METRICS__:{json.dumps(latency_val)}\n"
 
 
 @router.post("/chat/stream")

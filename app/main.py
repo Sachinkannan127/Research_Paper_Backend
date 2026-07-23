@@ -10,6 +10,7 @@ load_dotenv()
 from app.routes.chat import ChatService, router
 from app.routes.stream import router as stream_router
 from app.routes.config import router as config_router
+from app.routes.voice import router as voice_router
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
@@ -43,3 +44,4 @@ def health_check():
 app.include_router(router)
 app.include_router(stream_router)
 app.include_router(config_router)
+app.include_router(voice_router)
