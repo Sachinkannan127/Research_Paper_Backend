@@ -60,3 +60,9 @@ desktop.ini
 .pytest_cache/
 .coverage
 htmlcov/
+
+
+ingest.py
+outputs
+recordings
+tests/

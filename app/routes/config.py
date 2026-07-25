@@ -7,7 +7,7 @@ from pydantic import BaseModel
 from app.core.config import settings
 from app.rag.vector_store import VectorStore
 from app.rag.chunk import chunk_text
-from app.rag.embeddings import Embeddings
+from app.rag.embeddings import EmbeddingModel
 
 router = APIRouter(prefix="/config", tags=["Configuration"])
 
@@ -113,7 +113,7 @@ async def ingest_stream():
             
             # Step 3: Embeddings
             yield "__STEP__:embedding:active\n"
-            embeddings_service = Embeddings()
+            embeddings_service = EmbeddingModel()
             embeddings = await embeddings_service.embed_texts(chunks)
             yield "__STEP__:embedding:done\n"
             

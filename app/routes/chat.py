@@ -6,7 +6,7 @@ from pydantic import BaseModel
 from typing import List, Optional
 from app.prompts.system_prompt import SYSTEM_PROMPT
 from app.rag.chunk import chunk_text
-from app.rag.embeddings import Embeddings
+from app.rag.embeddings import EmbeddingModel
 from app.rag.vector_store import VectorStore
 from app.rag.retriever import Retriever
 
@@ -57,7 +57,7 @@ async def ensure_ingested():
 
     chunks = chunk_text(pdf_path)
 
-    embeddings_service = Embeddings()
+    embeddings_service = EmbeddingModel()
     embeddings = await embeddings_service.embed_texts(chunks)
 
     ids = [f"chunk_{i}" for i in range(len(chunks))]
@@ -86,7 +86,9 @@ def _run_model(model_name: str, question: str, context: str, history: List[Messa
     messages = [{"role": "system", "content": system_content}]
     if history:
         for msg in history:
-            messages.append({"role": msg.role, "content": msg.content})
+            role = msg.role.lower().strip() if msg.role else ""
+            if role in {"user", "assistant", "system", "model"} and msg.content and msg.content != "string":
+                messages.append({"role": role, "content": msg.content})
     messages.append({"role": "user", "content": question})
     
     return completion(
@@ -174,7 +176,7 @@ async def ChatService(question: str, model_name: str, history: List[MessageParam
         # Step 3: Embed chunks
         try:
             step_start = time.time()
-            embeddings_service = Embeddings()
+            embeddings_service = EmbeddingModel()
             embeddings = await embeddings_service.embed_texts(chunks)
             pipeline_steps.append({
                 "name": "embedding", 
@@ -215,7 +217,7 @@ async def ChatService(question: str, model_name: str, history: List[MessageParam
     # Step 5: Query embedding
     try:
         step_start = time.time()
-        embeddings_service = Embeddings()
+        embeddings_service = EmbeddingModel()
         query_embedding = await embeddings_service.embed_query(question)
         pipeline_steps.append({
             "name": "query_embedding", 

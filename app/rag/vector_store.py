@@ -5,7 +5,6 @@ import shutil
 from pymongo import UpdateOne
 from app.db.mongodb import get_vector_collection
 import certifi
-
 logger = logging.getLogger("uvicorn")
 
 

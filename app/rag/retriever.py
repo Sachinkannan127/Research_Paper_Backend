@@ -1,11 +1,11 @@
-from app.rag.embeddings import Embeddings
+from app.rag.embeddings import EmbeddingModel
 from app.rag.vector_store import VectorStore
 
 
 class Retriever:
 
     def __init__(self):
-        self.embeddings = Embeddings()
+        self.embeddings = EmbeddingModel()
         self.vector_store = VectorStore()
 
     async def retrieve(self, question: str, top_k: int = 5):
@@ -29,4 +29,4 @@ class Retriever:
                 }
             )
 
-        return retrieved_chunks
+        return retrieved_chunks

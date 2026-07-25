@@ -10,12 +10,18 @@ load_dotenv()
 from app.routes.chat import ChatService, router
 from app.routes.stream import router as stream_router
 from app.routes.config import router as config_router
-from app.routes.voice import router as voice_router
+# from app.routes.voice import router as voice_router
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     print("Starting up...")
+    from app.db.mongodb import connect_to_mongo, close_mongo_connection
+    try:
+        await connect_to_mongo()
+    except Exception as e:
+        print(f"Failed to connect to MongoDB on startup: {e}")
     yield
+    await close_mongo_connection()
     print("Shutting down...")
 
 app = FastAPI(title="Research Paper Assistant", version="1.0.0", lifespan=lifespan)
@@ -44,4 +50,4 @@ def health_check():
 app.include_router(router)
 app.include_router(stream_router)
 app.include_router(config_router)
-app.include_router(voice_router)
+# app.include_router(voice_router)

@@ -6,7 +6,7 @@ from typing import List
 
 from app.prompts.system_prompt import SYSTEM_PROMPT
 from app.rag.chunk import chunk_text
-from app.rag.embeddings import Embeddings
+from app.rag.embeddings import EmbeddingModel
 from app.rag.vector_store import VectorStore
 from app.rag.retriever import Retriever
 from app.routes.chat import MessageParam, ChatRequest, calculate_similarity_percentage
@@ -32,7 +32,7 @@ async def ensure_ingested():
     print(f"[Ingest] Vector store is empty — starting ingestion of {pdf_name}...")
     chunks = chunk_text(pdf_path)
 
-    embeddings_service = Embeddings()
+    embeddings_service = EmbeddingModel()
     embeddings = await embeddings_service.embed_texts(chunks)
 
     ids = [f"chunk_{i}" for i in range(len(chunks))]
@@ -79,7 +79,9 @@ def _run_model_stream(model_name: str, question: str, context: str, history: Lis
     messages = [{"role": "system", "content": system_content}]
     if history:
         for msg in history:
-            messages.append({"role": msg.role, "content": msg.content})
+            role = msg.role.lower().strip() if msg.role else ""
+            if role in {"user", "assistant", "system", "model"} and msg.content and msg.content != "string":
+                messages.append({"role": role, "content": msg.content})
     messages.append({"role": "user", "content": question})
 
     return completion(
@@ -163,7 +165,7 @@ async def _stream_answer(model_name: str, question: str, history: List[MessagePa
         yield "__STEP__:embedding:active\n"
         try:
             step_start = time.time()
-            embeddings_service = Embeddings()
+            embeddings_service = EmbeddingModel()
             embeddings = await embeddings_service.embed_texts(chunks)
             lat = round((time.time() - step_start) * 1000, 2)
             yield f"__STEP__:embedding:done:{lat}\n"
@@ -201,7 +203,7 @@ async def _stream_answer(model_name: str, question: str, history: List[MessagePa
     yield "__STEP__:query_embedding:active\n"
     try:
         step_start = time.time()
-        embeddings_service = Embeddings()
+        embeddings_service = EmbeddingModel()
         query_embedding = await embeddings_service.embed_query(question)
         lat = round((time.time() - step_start) * 1000, 2)
         yield f"__STEP__:query_embedding:done:{lat}\n"

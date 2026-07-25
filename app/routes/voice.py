@@ -35,15 +35,10 @@ async def speech_to_text(audio_path: str) -> tuple[str, dict]:
     transcript = transcription.text
 
     # 2. Query RAG vector database and retrieve context + response
-    import asyncio
     from app.routes.chat import ChatService
     
-    # Run the synchronous RAG pipeline in thread pool to prevent blocking the async event loop
-    loop = asyncio.get_running_loop()
-    rag_result = await loop.run_in_executor(
-        None,
-        lambda: ChatService(question=transcript, model_name="smart", history=[])
-    )
+    rag_result = await ChatService(question=transcript, model_name="smart", history=[])
+
     
     return transcript, rag_result
 
