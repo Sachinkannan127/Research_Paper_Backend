@@ -6,4 +6,7 @@ langchain-text-splitters
 pypdf
 sentence-transformers
 chromadb
+motor
+dnspython
+certifi
 

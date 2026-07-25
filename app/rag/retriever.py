@@ -8,30 +8,25 @@ class Retriever:
         self.embeddings = Embeddings()
         self.vector_store = VectorStore()
 
-    def retrieve(self, question: str, top_k: int = 5):
+    async def retrieve(self, question: str, top_k: int = 5):
 
-        query_embedding = self.embeddings.embed_query(question)
+        query_embedding = await self.embeddings.embed_query(question)
 
-        results = self.vector_store.query(
-            query_embeddings=query_embedding,
+        results = await self.vector_store.query(
+            query_embedding=query_embedding,
             top_k=top_k
         )
 
-        documents = results["documents"][0]
-        metadatas = results["metadatas"][0]
-        distances = results["distances"][0]
-
         retrieved_chunks = []
 
-        for doc, metadata, score in zip(documents, metadatas, distances):
-
+        for doc in results:
             retrieved_chunks.append(
                 {
-                    "text": doc,
-                    "page": metadata.get("page"),
-                    "source": metadata.get("source"),
-                    "score": score,
+                    "text": doc.get("text", ""),
+                    "page": doc.get("page"),
+                    "source": doc.get("source", "unknown"),
+                    "score": doc.get("score", 0.0),
                 }
             )
 
-        return retrieved_chunks
+        return retrieved_chunks

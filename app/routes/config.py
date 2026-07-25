@@ -27,7 +27,7 @@ def get_config():
     }
 
 @router.post("")
-def update_config(data: ConfigUpdate):
+async def update_config(data: ConfigUpdate):
     config = settings.load_rag_config()
     old_metric = config.get("similarity_metric", "cosine")
     
@@ -41,12 +41,13 @@ def update_config(data: ConfigUpdate):
     if data.similarity_metric and data.similarity_metric != old_metric:
         try:
             db = VectorStore()
-            db.recreate_collection(data.similarity_metric)
+            await db.recreate_collection(data.similarity_metric)
             print(f"[Config] Recreated collection with new similarity space: {data.similarity_metric}")
         except Exception as e:
             print(f"[Config] Failed to recreate collection: {e}")
             
     return {"status": "success", "message": "Configuration updated successfully"}
+
 
 @router.post("/upload")
 async def upload_pdf(file: UploadFile = File(...)):
@@ -76,17 +77,17 @@ async def upload_pdf(file: UploadFile = File(...)):
     }
 
 @router.post("/clear-database")
-def clear_database():
+async def clear_database():
     try:
         db = VectorStore()
-        db.delete_all()
+        await db.delete_all()
         return {"status": "success", "message": "Vector database cleared successfully"}
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Failed to clear database: {str(e)}")
 
 @router.get("/ingest/stream")
-def ingest_stream():
-    def _stream_ingest():
+async def ingest_stream():
+    async def _stream_ingest():
         config = settings.load_rag_config()
         pdf_path = config.get("active_pdf_path")
         
@@ -113,7 +114,7 @@ def ingest_stream():
             # Step 3: Embeddings
             yield "__STEP__:embedding:active\n"
             embeddings_service = Embeddings()
-            embeddings = embeddings_service.embed_texts(chunks)
+            embeddings = await embeddings_service.embed_texts(chunks)
             yield "__STEP__:embedding:done\n"
             
             # Step 4: Vector store
@@ -121,12 +122,12 @@ def ingest_stream():
             time.sleep(0.3)
             
             # Clear database first so we don't mix documents
-            db.delete_all()
+            await db.delete_all()
             
             ids = [f"chunk_{i}" for i in range(len(chunks))]
             metadatas = [{"source": pdf_path, "page": i + 1} for i in range(len(chunks))]
             
-            db.add_documents(
+            await db.add_documents(
                 ids=ids,
                 documents=chunks,
                 embeddings=embeddings,

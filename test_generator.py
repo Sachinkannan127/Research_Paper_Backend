@@ -1,3 +1,4 @@
+import asyncio
 import os
 import sys
 
@@ -8,14 +9,25 @@ from dotenv import load_dotenv
 load_dotenv()
 
 from app.routes.stream import _stream_answer
+from app.db.mongodb import connect_to_mongo, close_mongo_connection
 
-try:
-    print("Starting generator test...")
-    generator = _stream_answer(model_name="fast", question="Hello")
-    for chunk in generator:
-        print(f"YIELDED: {repr(chunk)}")
-    print("Generator completed successfully.")
-except Exception as e:
-    import traceback
-    print("Generator raised an exception:")
-    traceback.print_exc()
+async def async_main():
+    print("Connecting to MongoDB...")
+    await connect_to_mongo()
+    try:
+        print("Starting generator test...")
+        generator = _stream_answer(model_name="fast", question="Hello")
+        async for chunk in generator:
+            print(f"YIELDED: {repr(chunk)}")
+        print("Generator completed successfully.")
+    finally:
+        print("Closing MongoDB connection...")
+        await close_mongo_connection()
+
+if __name__ == "__main__":
+    try:
+        asyncio.run(async_main())
+    except Exception as e:
+        import traceback
+        print("Generator raised an exception:")
+        traceback.print_exc()

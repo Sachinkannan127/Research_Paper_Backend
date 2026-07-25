@@ -15,11 +15,11 @@ from app.core.config import settings
 router = APIRouter()
 
 
-def ensure_ingested():
+async def ensure_ingested():
     """Only ingest the PDF if the vector store is empty. Skips if data already exists."""
     db = VectorStore()
 
-    if db.count() > 0:
+    if await db.count() > 0:
         return  # Already ingested — skip
         
     config = settings.load_rag_config()
@@ -33,30 +33,31 @@ def ensure_ingested():
     chunks = chunk_text(pdf_path)
 
     embeddings_service = Embeddings()
-    embeddings = embeddings_service.embed_texts(chunks)
+    embeddings = await embeddings_service.embed_texts(chunks)
 
     ids = [f"chunk_{i}" for i in range(len(chunks))]
     metadatas = [{"source": pdf_path, "page": i + 1} for i in range(len(chunks))]
 
-    db.add_documents(
+    await db.add_documents(
         ids=ids,
         documents=chunks,
         embeddings=embeddings,
         metadatas=metadatas,
     )
-    print(f"[Ingest] Done — {db.count()} chunks stored.")
+    print(f"[Ingest] Done — {await db.count()} chunks stored.")
 
 
-def _build_context(question: str) -> str:
+async def _build_context(question: str) -> str:
     """Retrieve top-k relevant chunks and format them into a context string."""
     retriever = Retriever()
-    retrieved_chunks = retriever.retrieve(question, top_k=3)
+    retrieved_chunks = await retriever.retrieve(question, top_k=3)
 
     if not retrieved_chunks:
         return "No relevant context found."
 
     parts = []
     for chunk in retrieved_chunks:
+
         parts.append(
             f"[Source: {chunk['source']}, Page: {chunk['page']}]\n{chunk['text']}"
         )
@@ -107,7 +108,7 @@ def _choose_models(model_name: str):
     return "gemini/gemini-2.5-flash", "groq/llama-3.1-8b-instant"
 
 
-def _stream_answer(model_name: str, question: str, history: List[MessageParam] = None):
+async def _stream_answer(model_name: str, question: str, history: List[MessageParam] = None):
     """Full RAG streaming pipeline: ingest (if needed) → retrieve → stream."""
     import time
     import json
@@ -122,7 +123,7 @@ def _stream_answer(model_name: str, question: str, history: List[MessageParam] =
     similarity_metric_type = config.get("similarity_metric", "cosine")
     
     # 1. Check ingest status
-    is_empty = db.count() == 0
+    is_empty = (await db.count()) == 0
 
     if is_empty:
         # Step 1: Text extraction
@@ -163,7 +164,7 @@ def _stream_answer(model_name: str, question: str, history: List[MessageParam] =
         try:
             step_start = time.time()
             embeddings_service = Embeddings()
-            embeddings = embeddings_service.embed_texts(chunks)
+            embeddings = await embeddings_service.embed_texts(chunks)
             lat = round((time.time() - step_start) * 1000, 2)
             yield f"__STEP__:embedding:done:{lat}\n"
             time.sleep(0.05)
@@ -177,7 +178,7 @@ def _stream_answer(model_name: str, question: str, history: List[MessageParam] =
             step_start = time.time()
             ids = [f"chunk_{i}" for i in range(len(chunks))]
             metadatas = [{"source": pdf_path, "page": i + 1} for i in range(len(chunks))]
-            db.add_documents(
+            await db.add_documents(
                 ids=ids,
                 documents=chunks,
                 embeddings=embeddings,
@@ -201,7 +202,7 @@ def _stream_answer(model_name: str, question: str, history: List[MessageParam] =
     try:
         step_start = time.time()
         embeddings_service = Embeddings()
-        query_embedding = embeddings_service.embed_query(question)
+        query_embedding = await embeddings_service.embed_query(question)
         lat = round((time.time() - step_start) * 1000, 2)
         yield f"__STEP__:query_embedding:done:{lat}\n"
         time.sleep(0.05)
@@ -213,7 +214,7 @@ def _stream_answer(model_name: str, question: str, history: List[MessageParam] =
     yield "__STEP__:similarity_search:active\n"
     try:
         step_start = time.time()
-        results = db.query(query_embedding, top_k=3)
+        results = await db.query(query_embedding=query_embedding, top_k=3)
         lat = round((time.time() - step_start) * 1000, 2)
         yield f"__STEP__:similarity_search:done:{lat}\n"
         time.sleep(0.05)
@@ -225,24 +226,21 @@ def _stream_answer(model_name: str, question: str, history: List[MessageParam] =
     yield "__STEP__:top_k:active\n"
     try:
         step_start = time.time()
-        documents = results["documents"][0]
-        metadatas = results["metadatas"][0]
-        distances = results["distances"][0]
-
         retrieved_chunks = []
         parts = []
-        for doc, metadata, score in zip(documents, metadatas, distances):
+        for doc in results:
+            score = doc.get("score", 0.0)
             sim_pct = calculate_similarity_percentage(score, similarity_metric_type)
             retrieved_chunks.append({
-                "text": doc,
-                "page": metadata.get("page"),
-                "source": metadata.get("source"),
+                "text": doc.get("text", ""),
+                "page": doc.get("page"),
+                "source": doc.get("source", "unknown"),
                 "score": score,
                 "similarity_percentage": sim_pct,
                 "metric": similarity_metric_type.upper()
             })
             parts.append(
-                f"[Source: {metadata.get('source')}, Page: {metadata.get('page')}]\n{doc}"
+                f"[Source: {doc.get('source', 'unknown')}, Page: {doc.get('page')}]\n{doc.get('text', '')}"
             )
         context = "\n\n".join(parts) if parts else "No relevant context found."
         lat = round((time.time() - step_start) * 1000, 2)
@@ -305,7 +303,7 @@ def _stream_answer(model_name: str, question: str, history: List[MessageParam] =
 
 
 @router.post("/chat/stream")
-def stream_chat(request: ChatRequest):
+async def stream_chat(request: ChatRequest):
     return StreamingResponse(
         _stream_answer(request.model_name, request.question, request.history),
         media_type="text/plain"
