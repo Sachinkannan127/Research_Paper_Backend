@@ -1,7 +1,18 @@
+import asyncio
+import os
+import sys
+
+# Ensure project root is in sys.path
+sys.path.insert(0, os.path.abspath(os.path.dirname(__file__)))
+
 from app.rag.retriever import Retriever
+from app.db.mongodb import connect_to_mongo, close_mongo_connection
 
 
-def main():
+async def async_main():
+    print("Connecting to MongoDB...")
+    await connect_to_mongo()
+
     # Create Retriever object
     retriever = Retriever()
 
@@ -14,7 +25,7 @@ def main():
     print("=" * 60)
 
     # Retrieve relevant chunks
-    results = retriever.retrieve(
+    results = await retriever.retrieve(
         question=question,
         top_k=1
     )
@@ -22,6 +33,7 @@ def main():
     # Print retrieved chunks
     if not results:
         print("No relevant documents found.")
+        await close_mongo_connection()
         return
 
     for index, chunk in enumerate(results, start=1):
@@ -37,6 +49,13 @@ def main():
         print(chunk.get("text"))
 
         print("-" * 60)
+
+    print("Closing connection...")
+    await close_mongo_connection()
+
+
+def main():
+    asyncio.run(async_main())
 
 
 if __name__ == "__main__":

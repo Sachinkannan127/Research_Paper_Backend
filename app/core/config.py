@@ -9,7 +9,8 @@ CONFIG_FILE = os.path.join("app", "core", "rag_config.json")
 class Settings:
     GROQ_API_KEY = os.getenv("GROQ_API_KEY")
     GEMINI_API_KEY = os.getenv("GEMINI_API_KEY")
-    HP_API_KEY = os.getenv("HP_API_KEY")
+    HF_API_KEY = os.getenv("HF_API_KEY")
+    MONGO_DB_URL=os.getenv("MONGO_DB_URL")
     
     @staticmethod
     def get_default_config():
