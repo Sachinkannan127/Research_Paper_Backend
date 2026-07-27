@@ -29,7 +29,7 @@ app = FastAPI(title="Research Paper Assistant", version="1.0.0", lifespan=lifesp
 # Allow the React frontend to access this backend from any hostname or port dynamically
 app.add_middleware(
     CORSMiddleware,
-    allow_origin_regex="https?://.*",
+    allow_origin_regex="https://research-paper-frontend-beta.vercel.app",
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
