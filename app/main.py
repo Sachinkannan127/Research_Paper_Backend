@@ -26,20 +26,12 @@ async def lifespan(app: FastAPI):
 
 app = FastAPI(title="Research Paper Assistant", version="1.0.0", lifespan=lifespan)
 
-# Allow specific origins (Vercel production frontend, Render backend, and local dev server)
-origins = [
-    "https://research-paper-assistant-ylic.onrender.com",
-    "https://research-paper-frontend-sable.vercel.app",
-    "https://research-paper-frontend-sable.vercel.app/",
-    "http://localhost:3000",
-    "https://localhost:3000",
-    "http://127.0.0.1:3000",
-    "https://127.0.0.1:3000",
-]
+# Allow specific origins dynamically (Vercel subdomains, Render subdomains, and local dev servers)
+allow_origin_regex = r"^(https://.*\.vercel\.app|https://.*\.onrender\.com|https?://localhost(:\d+)?|https?://127\.0\.0\.1(:\d+)?)$"
 
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=origins,
+    allow_origin_regex=allow_origin_regex,
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
