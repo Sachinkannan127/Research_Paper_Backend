@@ -11,6 +11,7 @@ class Settings:
     GEMINI_API_KEY = os.getenv("GEMINI_API_KEY")
     HF_API_KEY = os.getenv("HF_API_KEY")
     MONGO_DB_URL=os.getenv("MONGO_DB_URL")
+    MONGO_DB_LOCAL=os.getenv("MONGO_DB_LOCAL")
     
     @staticmethod
     def get_default_config():
