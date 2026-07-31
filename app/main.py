@@ -26,10 +26,20 @@ async def lifespan(app: FastAPI):
 
 app = FastAPI(title="Research Paper Assistant", version="1.0.0", lifespan=lifespan)
 
-# Allow the React frontend to access this backend from any hostname or port dynamically
+# Allow specific origins (Vercel production frontend, Render backend, and local dev server)
+origins = [
+    "https://research-paper-assistant-ylic.onrender.com",
+    "https://research-paper-frontend-sable.vercel.app",
+    "https://research-paper-frontend-sable.vercel.app/",
+    "http://localhost:3000",
+    "https://localhost:3000",
+    "http://127.0.0.1:3000",
+    "https://127.0.0.1:3000",
+]
+
 app.add_middleware(
     CORSMiddleware,
-    allow_origin_regex="https?://.",
+    allow_origins=origins,
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
