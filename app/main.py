@@ -37,9 +37,18 @@ origins = [
     "https://127.0.0.1:3000",
 ]
 
+# Allow any additional custom origins defined in environment variables
+allowed_origins_env = os.getenv("ALLOWED_ORIGINS")
+if allowed_origins_env:
+    for origin in allowed_origins_env.split(","):
+        trimmed = origin.strip()
+        if trimmed and trimmed not in origins:
+            origins.append(trimmed)
+
 app.add_middleware(
     CORSMiddleware,
     allow_origins=origins,
+    allow_origin_regex="https://.*\\.vercel\\.app",  # Matches any Vercel deployment URL (previews, branches)
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
