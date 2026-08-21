@@ -16,11 +16,17 @@ from app.routes.config import router as config_router
 async def lifespan(app: FastAPI):
     print("Starting up...")
     from app.db.mongodb import connect_to_mongo, close_mongo_connection
+    from app.mcp.client_manager import mcp_client_manager
     try:
         await connect_to_mongo()
     except Exception as e:
         print(f"Failed to connect to MongoDB on startup: {e}")
+    try:
+        await mcp_client_manager.initialize()
+    except Exception as e:
+        print(f"Failed to initialize MCP client connectors: {e}")
     yield
+    await mcp_client_manager.shutdown()
     await close_mongo_connection()
     print("Shutting down...")
 
@@ -31,11 +37,24 @@ origins = [
     "https://research-paper-assistant-ylic.onrender.com",
     "https://research-paper-frontend-sable.vercel.app",
     "https://research-paper-frontend-sable.vercel.app/",
+    "http://localhost:3001",
+    "https://localhost:3001",
+    "http://127.0.0.1:3001",
+    "https://127.0.0.1:3001",
     "http://localhost:3000",
     "https://localhost:3000",
     "http://127.0.0.1:3000",
     "https://127.0.0.1:3000",
-]
+    "http://localhost:5173",
+    "https://localhost:5173", ]
+
+# Allow any additional custom origins defined in environment variables
+allowed_origins_env = os.getenv("ALLOWED_ORIGINS")
+if allowed_origins_env:
+    for origin in allowed_origins_env.split(","):
+        trimmed = origin.strip()
+        if trimmed and trimmed not in origins:
+            origins.append(trimmed)
 
 # Allow any additional custom origins defined in environment variables
 allowed_origins_env = os.getenv("ALLOWED_ORIGINS")
@@ -54,6 +73,14 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
+@app.middleware("http")
+async def add_no_cache_headers(request, call_next):
+    response = await call_next(request)
+    response.headers["Cache-Control"] = "no-store, no-cache, must-revalidate, max-age=0"
+    response.headers["Pragma"] = "no-cache"
+    response.headers["Expires"] = "0"
+    return response
+
 @app.get("/")
 def landing_page():
     return {
@@ -66,7 +93,12 @@ def health_check():
         "status": "Naa Nalla Irukken"
     }
 
-app.include_router(router)
-app.include_router(stream_router)
+from app.routes.auth import router as auth_router
+from app.core.security import get_current_user
+from fastapi import Depends
+
+app.include_router(auth_router)
+app.include_router(router, dependencies=[Depends(get_current_user)])
+app.include_router(stream_router, dependencies=[Depends(get_current_user)])
 app.include_router(config_router)
 # app.include_router(voice_router)

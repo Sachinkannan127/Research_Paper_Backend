@@ -9,3 +9,9 @@ motor
 dnspython
 certifi
 python-multipart
+clerk-backend-api
+pyjwt[crypto]
+svix
+mcp[cli]
+google-auth
+google-auth-oauthlib

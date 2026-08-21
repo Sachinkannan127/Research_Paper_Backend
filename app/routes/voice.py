@@ -29,7 +29,7 @@ async def speech_to_text(audio_path: str) -> tuple[str, dict]:
         transcription = await litellm.atranscription(
             model="groq/whisper-large-v3-turbo",
             file=audio_file,
-            api_key=settings.GROQ_API_KEY
+            api_key=os.getenv("GROQ_API_KEY") or settings.MISTRAL_API_KEY
         )
 
     transcript = transcription.text
