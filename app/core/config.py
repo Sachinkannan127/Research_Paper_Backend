@@ -7,10 +7,17 @@ load_dotenv()
 CONFIG_FILE = os.path.join("app", "core", "rag_config.json")
 
 class Settings:
-    GROQ_API_KEY = os.getenv("GROQ_API_KEY")
+    MISTRAL_API_KEY = os.getenv("MISTRAL_API_KEY")
     GEMINI_API_KEY = os.getenv("GEMINI_API_KEY")
     HF_API_KEY = os.getenv("HF_API_KEY")
-    MONGO_DB_URL=os.getenv("MONGO_DB_URL")
+    MONGO_DB_URL = os.getenv("MONGO_DB_URL")
+    EXA_API_KEY = os.getenv("EXA_API_KEY")
+    
+    JWT_SECRET_KEY = os.getenv("JWT_SECRET_KEY", "supersecretkeyforresearchpaperassistant")
+    JWT_ALGORITHM = os.getenv("JWT_ALGORITHM", "HS256")
+    ACCESS_TOKEN_EXPIRE_MINUTES = int(os.getenv("ACCESS_TOKEN_EXPIRE_MINUTES", "30"))
+    REFRESH_TOKEN_EXPIRE_DAYS = int(os.getenv("REFRESH_TOKEN_EXPIRE_DAYS", "7"))
+    CLERK_JWKS_URL = os.getenv("CLERK_JWKS_URL", "https://choice-wolf-9655.clerk.accounts.dev/.well-known/jwks.json")
 
     
     @staticmethod

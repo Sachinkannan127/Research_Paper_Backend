@@ -19,6 +19,11 @@ db_instance = Database()
 def get_database_client():
     return db_instance.client
 
+def get_user_collection():
+    return db_instance.client["rag_db"]["users"]   
+
+def get_profile_collection():
+    return db_instance.client["rag_db"]["profiles"]
 
 def get_vector_collection():
     db_name = getattr(settings, "DB_NAME", None) or "rag_db"

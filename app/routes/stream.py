@@ -1,8 +1,11 @@
 import os
-from fastapi import APIRouter
+import json
+import time
+from fastapi import APIRouter, Depends
 from fastapi.responses import StreamingResponse
 from litellm import completion
-from typing import List
+from typing import List, Optional
+from app.servics.exa import search_exa
 
 from app.prompts.system_prompt import SYSTEM_PROMPT
 from app.rag.chunk import chunk_text
@@ -11,6 +14,7 @@ from app.rag.vector_store import VectorStore
 from app.rag.retriever import Retriever
 from app.routes.chat import MessageParam, ChatRequest, calculate_similarity_percentage
 from app.core.config import settings
+from app.core.security import get_current_user
 
 router = APIRouter()
 
@@ -57,14 +61,13 @@ async def _build_context(question: str) -> str:
 
     parts = []
     for chunk in retrieved_chunks:
-
         parts.append(
             f"[Source: {chunk['source']}, Page: {chunk['page']}]\n{chunk['text']}"
         )
     return "\n\n".join(parts)
 
 
-def _run_model_stream(model_name: str, question: str, context: str, history: List[MessageParam] = None):
+def _run_model_stream(model_name: str, question: str, context: str, history: List[MessageParam] = None, clerk_id: Optional[str] = None):
     """Call LiteLLM with a fully formatted RAG system prompt."""
     config = settings.load_rag_config()
     prompt_template = config.get("system_prompt")
@@ -76,6 +79,21 @@ def _run_model_stream(model_name: str, question: str, context: str, history: Lis
         prompt_template += "\n\nUser Question:\n{question}"
 
     system_content = prompt_template.format(context=context, question=question)
+
+    # Append active integrations context if available
+    integration_info = []
+    from app.mcp.client_manager import mcp_client_manager
+    ctx = mcp_client_manager.get_user_context(clerk_id)
+    if ctx.get("github_username"):
+        integration_info.append(f"- Active GitHub User: {ctx['github_username']}")
+    
+    slack_team_id = os.getenv("SLACK_TEAM_ID") or config.get("slack_team_id")
+    if slack_team_id:
+        integration_info.append(f"- Active Slack Team ID: {slack_team_id}")
+
+    if integration_info:
+        system_content += "\n\nIntegrations & User Context:\n" + "\n".join(integration_info)
+
     messages = [{"role": "system", "content": system_content}]
     if history:
         for msg in history:
@@ -106,17 +124,12 @@ def _is_rate_limit_error(error: Exception) -> bool:
 def _choose_models(model_name: str):
     model_choice = model_name.lower().strip()
     if model_choice == "fast":
-        return "groq/llama-3.1-8b-instant", "gemini/gemini-2.5-flash"
-    return "gemini/gemini-2.5-flash", "groq/llama-3.1-8b-instant"
+        return "mistral/mistral-small-latest", "gemini/gemini-2.5-flash"
+    return "gemini/gemini-2.5-flash", "mistral/mistral-small-latest"
 
 
-async def _stream_answer(model_name: str, question: str, history: List[MessageParam] = None):
+async def _stream_answer(model_name: str, question: str, history: List[MessageParam] = None, current_user: Optional[dict] = None):
     """Full RAG streaming pipeline: ingest (if needed) → retrieve → stream."""
-    import time
-    import json
-    from app.rag.text_extract import PDFLoader
-    from langchain_text_splitters import RecursiveCharacterTextSplitter
-
     total_start = time.time()
     db = VectorStore()
     config = settings.load_rag_config()
@@ -124,6 +137,13 @@ async def _stream_answer(model_name: str, question: str, history: List[MessagePa
     pdf_name = config.get("active_pdf_name", "Research_paper.pdf")
     similarity_metric_type = config.get("similarity_metric", "cosine")
     
+    # Initialize user MCP connection if logged in
+    clerk_id = None
+    if current_user:
+        clerk_id = current_user.get("clerk_id")
+        from app.mcp.client_manager import mcp_client_manager
+        await mcp_client_manager.ensure_user_initialized(clerk_id, current_user)
+        
     # 1. Check ingest status
     is_empty = (await db.count()) == 0
 
@@ -135,6 +155,7 @@ async def _stream_answer(model_name: str, question: str, history: List[MessagePa
             return
         try:
             step_start = time.time()
+            from app.rag.text_extract import PDFLoader
             loader = PDFLoader()
             text = loader.load_pdf(pdf_path)
             lat = round((time.time() - step_start) * 1000, 2)
@@ -148,6 +169,7 @@ async def _stream_answer(model_name: str, question: str, history: List[MessagePa
         yield "__STEP__:chunking:active\n"
         try:
             step_start = time.time()
+            from langchain_text_splitters import RecursiveCharacterTextSplitter
             splitter = RecursiveCharacterTextSplitter(
                 chunk_size=1000,
                 chunk_overlap=200,
@@ -268,14 +290,173 @@ async def _stream_answer(model_name: str, question: str, history: List[MessagePa
     llm_start = time.time()
     success = False
 
+    # Build messages list
+    system_content = config.get("system_prompt")
+    if "{context}" not in system_content:
+        system_content += "\n\nContext:\n{context}"
+    if "{question}" not in system_content:
+        system_content += "\n\nUser Question:\n{question}"
+    
+    system_content_formatted = system_content.format(context=context, question=question)
+
+    # Append active integrations context if available
+    integration_info = []
+    from app.mcp.client_manager import mcp_client_manager
+    ctx = mcp_client_manager.get_user_context(clerk_id)
+    if ctx.get("github_username"):
+        integration_info.append(f"- Active GitHub User: {ctx['github_username']}")
+    
+    slack_team_id = os.getenv("SLACK_TEAM_ID") or config.get("slack_team_id")
+    if slack_team_id:
+        integration_info.append(f"- Active Slack Team ID: {slack_team_id}")
+
+    if integration_info:
+        system_content_formatted += "\n\nIntegrations & User Context:\n" + "\n".join(integration_info)
+
+    messages = [{"role": "system", "content": system_content_formatted}]
+    if history:
+        for msg in history:
+            role = msg.role.lower().strip() if msg.role else ""
+            if role in {"user", "assistant", "system", "model"} and msg.content and msg.content != "string":
+                messages.append({"role": role, "content": msg.content})
+    messages.append({"role": "user", "content": question})
+    
+    tools = [
+        {
+            "type": "function",
+            "function": {
+                "name": "search_web",
+                "description": "Search the web using Exa to find recent information, current events, or academic/external context not present in the provided local research papers.",
+                "parameters": {
+                    "type": "object",
+                    "properties": {
+                        "query": {
+                            "type": "string",
+                            "description": "The search query to send to the search engine. Be specific."
+                        }
+                    },
+                    "required": ["query"]
+                }
+            }
+        }
+    ]
+
+    # Fetch tools from active external user-specific MCP servers
+    mcp_tools = await mcp_client_manager.get_all_tools(clerk_id)
+    tools.extend(mcp_tools)
+
     while attempts < 3:
         attempts += 1
         try:
             yield f"Model: {primary_model}\nAttempts: {attempts}\n\n"
-            for chunk in _run_model_stream(primary_model, question, context, history):
-                delta = getattr(chunk.choices[0].delta, "content", None)
-                if delta:
-                    yield delta
+            
+            # Start streaming the first response immediately
+            stream_res = completion(
+                model=primary_model,
+                messages=messages,
+                temperature=0.3,
+                max_tokens=400,
+                tools=tools,
+                tool_choice="auto" if tools else None,
+                stream=True
+            )
+            
+            tool_calls_accumulator = {}
+            has_tool_calls = False
+            
+            for chunk in stream_res:
+                delta = chunk.choices[0].delta if chunk.choices else None
+                if not delta:
+                    continue
+                
+                # Check for streaming tool calls
+                if hasattr(delta, "tool_calls") and delta.tool_calls:
+                    has_tool_calls = True
+                    for tc in delta.tool_calls:
+                        idx = tc.index
+                        if idx not in tool_calls_accumulator:
+                            tool_calls_accumulator[idx] = {
+                                "id": tc.id or "",
+                                "name": "",
+                                "arguments": ""
+                            }
+                        if tc.id:
+                            tool_calls_accumulator[idx]["id"] = tc.id
+                        if tc.function:
+                            if tc.function.name:
+                                tool_calls_accumulator[idx]["name"] += tc.function.name
+                            if tc.function.arguments:
+                                tool_calls_accumulator[idx]["arguments"] += tc.function.arguments
+                
+                # If it's regular content and no tool calls have been detected yet, stream it
+                elif not has_tool_calls and hasattr(delta, "content") and delta.content:
+                    yield delta.content
+            
+            # If tool calls were accumulated, execute them and stream the final response
+            if has_tool_calls:
+                # Add assistant message with tool calls to history
+                assistant_tool_msg = {
+                    "role": "assistant",
+                    "tool_calls": [
+                        {
+                            "id": tc_val["id"],
+                            "type": "function",
+                            "function": {
+                                "name": tc_val["name"],
+                                "arguments": tc_val["arguments"]
+                            }
+                        }
+                        for tc_val in tool_calls_accumulator.values()
+                    ]
+                }
+                messages.append(assistant_tool_msg)
+                
+                # Execute tools
+                for tc_val in tool_calls_accumulator.values():
+                    tool_name = tc_val["name"]
+                    try:
+                        arguments = json.loads(tc_val["arguments"])
+                    except Exception:
+                        arguments = {}
+
+                    if tool_name == "search_web":
+                        search_query = arguments.get("query", question)
+                        search_results = search_exa(search_query)
+                        if "error" in search_results:
+                            tool_content = f"Search failed: {search_results['error']}"
+                        else:
+                            formatted_results = []
+                            for r in search_results.get("results", []):
+                                title = r.get("title", "No Title")
+                                url = r.get("url", "No URL")
+                                highlights = r.get("highlights", [])
+                                highlight_text = " | ".join(highlights) if highlights else "No highlights"
+                                formatted_results.append(f"Title: {title}\nURL: {url}\nExcerpt: {highlight_text}")
+                            tool_content = "\n\n".join(formatted_results) if formatted_results else "No results found."
+                    else:
+                        # Route to external user-specific MCP servers
+                        tool_content = await mcp_client_manager.execute_tool(tool_name, arguments, clerk_id)
+                    
+                    messages.append({
+                        "role": "tool",
+                        "name": tool_name,
+                        "tool_call_id": tc_val["id"],
+                        "content": tool_content
+                    })
+                
+                # Stream the final answer after tool completion
+                final_stream = completion(
+                    model=primary_model,
+                    messages=messages,
+                    temperature=0.3,
+                    max_tokens=400,
+                    stream=True
+                )
+                for chunk in final_stream:
+                    delta = getattr(chunk.choices[0].delta, "content", None)
+                    if delta:
+                        yield delta
+            
             success = True
             break
         except Exception as error:
@@ -285,28 +466,74 @@ async def _stream_answer(model_name: str, question: str, history: List[MessagePa
     if not success:
         try:
             yield f"\n\nModel: {fallback_model}\nAttempts: 1\n\n"
-            for chunk in _run_model_stream(fallback_model, question, context, history):
-                delta = getattr(chunk.choices[0].delta, "content", None)
-                if delta:
-                    yield delta
+            
+            # Simple fallback completion without streaming first
+            res = completion(
+                model=fallback_model,
+                messages=messages,
+                temperature=0.3,
+                max_tokens=400,
+                tools=tools,
+                tool_choice="auto" if tools else None
+            )
+            msg_obj = res.choices[0].message
+            if hasattr(msg_obj, "tool_calls") and msg_obj.tool_calls:
+                messages.append(msg_obj)
+                for tool_call in msg_obj.tool_calls:
+                    tool_name = tool_call.function.name
+                    try:
+                        arguments = json.loads(tool_call.function.arguments)
+                    except Exception:
+                        arguments = {}
+
+                    if tool_name == "search_web":
+                        search_query = arguments.get("query", question)
+                        search_results = search_exa(search_query)
+                        if "error" in search_results:
+                            tool_content = f"Search failed: {search_results['error']}"
+                        else:
+                            formatted_results = []
+                            for r in search_results.get("results", []):
+                                title = r.get("title", "No Title")
+                                url = r.get("url", "No URL")
+                                highlights = r.get("highlights", [])
+                                highlight_text = " | ".join(highlights) if highlights else "No highlights"
+                                formatted_results.append(f"Title: {title}\nURL: {url}\nExcerpt: {highlight_text}")
+                            tool_content = "\n\n".join(formatted_results) if formatted_results else "No results found."
+                    else:
+                        # Route to external user-specific MCP servers
+                        tool_content = await mcp_client_manager.execute_tool(tool_name, arguments, clerk_id)
+
+                    messages.append({
+                        "role": "tool",
+                        "name": tool_name,
+                        "tool_call_id": tool_call.id,
+                        "content": tool_content
+                    })
+                
+                stream_res = completion(
+                    model=fallback_model,
+                    messages=messages,
+                    temperature=0.3,
+                    max_tokens=400,
+                    stream=True
+                )
+                for chunk in stream_res:
+                    delta = getattr(chunk.choices[0].delta, "content", None)
+                    if delta:
+                        yield delta
+            else:
+                content = getattr(msg_obj, "content", "")
+                if content:
+                    yield content
         except Exception as error:
             yield f"\n\nError streaming from fallback model ({fallback_model}): {str(error)}"
 
-    model_end = time.time()
-    llm_latency = round((model_end - llm_start) * 1000, 2)
-    total_latency = round((model_end - total_start) * 1000, 2)
-    
-    latency_val = {
-        "total_latency_ms": total_latency,
-        "rag_latency_ms": rag_latency,
-        "llm_latency_ms": llm_latency
-    }
-    yield f"\n__LATENCY_METRICS__:{json.dumps(latency_val)}\n"
 
 
 @router.post("/chat/stream")
-async def stream_chat(request: ChatRequest):
+async def stream_chat(request: ChatRequest, current_user: dict = Depends(get_current_user)):
     return StreamingResponse(
-        _stream_answer(request.model_name, request.question, request.history),
+        _stream_answer(request.model_name, request.question, request.history, current_user=current_user),
         media_type="text/plain"
     )

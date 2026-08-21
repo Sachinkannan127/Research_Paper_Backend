@@ -50,11 +50,11 @@ class RagasEvaluator:
         )
 
         if llm is None:
-            # Use Groq's OpenAI-compatible endpoint
+            # Use Mistral's OpenAI-compatible endpoint
             llm = ChatOpenAI(
-                model="llama-3.1-8b-instant",
-                base_url="https://api.groq.com/openai/v1",
-                api_key=settings.GROQ_API_KEY,
+                model="mistral-small-latest",
+                base_url="https://api.mistral.ai/v1",
+                api_key=settings.MISTRAL_API_KEY,
             )
 
         if embeddings is None:

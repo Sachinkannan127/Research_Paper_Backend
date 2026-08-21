@@ -1,7 +1,9 @@
 import os
 import time
+import json
 from litellm import completion
-from fastapi import APIRouter
+from fastapi import APIRouter, Depends
+from app.servics.exa import search_exa
 from pydantic import BaseModel
 from typing import List, Optional
 from app.prompts.system_prompt import SYSTEM_PROMPT
@@ -9,8 +11,8 @@ from app.rag.chunk import chunk_text
 from app.rag.embeddings import EmbeddingModel
 from app.rag.vector_store import VectorStore
 from app.rag.retriever import Retriever
-
 from app.core.config import settings
+from app.core.security import get_current_user
 
 def calculate_similarity_percentage(score: float, metric: str) -> float:
     # Compute similarity based on space metric configured
@@ -72,7 +74,7 @@ async def ensure_ingested():
     print(f"[Ingest] Done — {await db.count()} chunks stored.")
 
 
-def _run_model(model_name: str, question: str, context: str, history: List[MessageParam] = None):
+async def _run_model(model_name: str, question: str, context: str, history: List[MessageParam] = None, clerk_id: Optional[str] = None):
     config = settings.load_rag_config()
     prompt_template = config.get("system_prompt")
 
@@ -83,6 +85,21 @@ def _run_model(model_name: str, question: str, context: str, history: List[Messa
         prompt_template += "\n\nUser Question:\n{question}"
 
     system_content = prompt_template.format(context=context, question=question)
+
+    # Append active integrations context if available
+    integration_info = []
+    from app.mcp.client_manager import mcp_client_manager
+    ctx = mcp_client_manager.get_user_context(clerk_id)
+    if ctx.get("github_username"):
+        integration_info.append(f"- Active GitHub User: {ctx['github_username']}")
+    
+    slack_team_id = os.getenv("SLACK_TEAM_ID") or config.get("slack_team_id")
+    if slack_team_id:
+        integration_info.append(f"- Active Slack Team ID: {slack_team_id}")
+
+    if integration_info:
+        system_content += "\n\nIntegrations & User Context:\n" + "\n".join(integration_info)
+
     messages = [{"role": "system", "content": system_content}]
     if history:
         for msg in history:
@@ -90,33 +107,103 @@ def _run_model(model_name: str, question: str, context: str, history: List[Messa
             if role in {"user", "assistant", "system", "model"} and msg.content and msg.content != "string":
                 messages.append({"role": role, "content": msg.content})
     messages.append({"role": "user", "content": question})
+
+    tools = [
+        {
+            "type": "function",
+            "function": {
+                "name": "search_web",
+                "description": "Search the web using Exa to find recent information, current events, or academic/external context not present in the provided local research papers.",
+                "parameters": {
+                    "type": "object",
+                    "properties": {
+                        "query": {
+                            "type": "string",
+                            "description": "The search query to send to the search engine. Be specific."
+                        }
+                    },
+                    "required": ["query"]
+                }
+            }
+        }
+    ]
+
+    # Fetch tools from active external MCP servers for this user
+    mcp_tools = await mcp_client_manager.get_all_tools(clerk_id)
+    tools.extend(mcp_tools)
     
-    return completion(
+    response = completion(
         model=model_name,
         messages=messages,
         temperature=0.3,
         max_tokens=400,
+        tools=tools,
+        tool_choice="auto"
     )
+
+    message = response.choices[0].message
+    if hasattr(message, "tool_calls") and message.tool_calls:
+        messages.append(message)
+        for tool_call in message.tool_calls:
+            tool_name = tool_call.function.name
+            try:
+                arguments = json.loads(tool_call.function.arguments)
+            except Exception:
+                arguments = {}
+
+            if tool_name == "search_web":
+                search_query = arguments.get("query", question)
+                search_results = search_exa(search_query)
+                if "error" in search_results:
+                    tool_content = f"Search failed: {search_results['error']}"
+                else:
+                    formatted_results = []
+                    for res in search_results.get("results", []):
+                        title = res.get("title", "No Title")
+                        url = res.get("url", "No URL")
+                        highlights = res.get("highlights", [])
+                        highlight_text = " | ".join(highlights) if highlights else "No highlights"
+                        formatted_results.append(f"Title: {title}\nURL: {url}\nExcerpt: {highlight_text}")
+                    tool_content = "\n\n".join(formatted_results) if formatted_results else "No results found."
+            else:
+                # Route to external user-specific MCP servers
+                tool_content = await mcp_client_manager.execute_tool(tool_name, arguments, clerk_id)
+
+            messages.append({
+                "role": "tool",
+                "name": tool_name,
+                "tool_call_id": tool_call.id,
+                "content": tool_content
+            })
+        
+        response = completion(
+            model=model_name,
+            messages=messages,
+            temperature=0.3,
+            max_tokens=400
+        )
+
+    return response
 
 
 def _is_rate_limit_error(error: Exception) -> bool:
     error_name = error.__class__.__name__.lower()
     error_message = str(error).lower()
     return (
-        "rate" in error_name and "limit" in error_name
+        ("rate" in error_name and "limit" in error_name)
         or "rate limit" in error_message
         or "429" in error_message
     )
 
 
-def _run_primary_model(primary_model: str, question: str, context: str, history: List[MessageParam] = None, max_attempts: int = 3):
+async def _run_primary_model(primary_model: str, question: str, context: str, history: List[MessageParam] = None, max_attempts: int = 3, clerk_id: Optional[str] = None):
     last_error = None
     attempts = 0
 
     for _ in range(max_attempts):
         attempts += 1
         try:
-            return _run_model(primary_model, question, context, history), primary_model, attempts
+            return await _run_model(primary_model, question, context, history, clerk_id=clerk_id), primary_model, attempts
         except Exception as error:
             last_error = error
             if not _is_rate_limit_error(error):
@@ -125,7 +212,7 @@ def _run_primary_model(primary_model: str, question: str, context: str, history:
     raise last_error
 
 
-async def ChatService(question: str, model_name: str, history: List[MessageParam] = None):
+async def ChatService(question: str, model_name: str, history: List[MessageParam] = None, current_user: Optional[dict] = None):
     total_start = time.time()
     db = VectorStore()
     config = settings.load_rag_config()
@@ -133,6 +220,13 @@ async def ChatService(question: str, model_name: str, history: List[MessageParam
     pdf_name = config.get("active_pdf_name", "Research_paper.pdf")
     similarity_metric_type = config.get("similarity_metric", "cosine")
     
+    # Initialize user MCP connection if logged in
+    clerk_id = None
+    if current_user:
+        clerk_id = current_user.get("clerk_id")
+        from app.mcp.client_manager import mcp_client_manager
+        await mcp_client_manager.ensure_user_initialized(clerk_id, current_user)
+        
     is_empty = (await db.count()) == 0
     
     pipeline_steps = []
@@ -275,17 +369,17 @@ async def ChatService(question: str, model_name: str, history: List[MessageParam
 
     model_choice = model_name.lower().strip()
     if model_choice == "fast":
-        primary_model = "groq/llama-3.1-8b-instant"
+        primary_model = "mistral/mistral-small-latest"
         fallback_model = "gemini/gemini-2.5-flash"
     else:
         primary_model = "gemini/gemini-2.5-flash"
-        fallback_model = "groq/llama-3.1-8b-instant"
+        fallback_model = "mistral/mistral-small-latest"
 
     llm_start = time.time()
     try:
-        response, used_model, retry_attempts = _run_primary_model(primary_model, question, context_str, history)
+        response, used_model, retry_attempts = await _run_primary_model(primary_model, question, context_str, history, clerk_id=clerk_id)
     except Exception:
-        response = _run_model(fallback_model, question, context_str, history)
+        response = await _run_model(fallback_model, question, context_str, history, clerk_id=clerk_id)
         used_model = fallback_model
         retry_attempts = 3
 
@@ -308,5 +402,5 @@ async def ChatService(question: str, model_name: str, history: List[MessageParam
 
 
 @router.post("/chat")
-async def chat(request: ChatRequest):
-    return await ChatService(request.question, request.model_name, request.history)
+async def chat(request: ChatRequest, current_user: dict = Depends(get_current_user)):
+    return await ChatService(request.question, request.model_name, request.history, current_user=current_user)
