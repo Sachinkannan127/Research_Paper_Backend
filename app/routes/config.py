@@ -250,15 +250,16 @@ def github_authorize(request: Request, current_user: dict = Depends(get_current_
     
     clerk_id = current_user.get("clerk_id")
     
-    # Determine the backend base URL dynamically
-    backend_url = os.getenv("BACKEND_URL")
-    if not backend_url:
-        # Fallback to request's base URL, respecting proxy headers if possible
-        proto = request.headers.get("x-forwarded-proto", "http")
-        host = request.headers.get("x-forwarded-host") or request.url.netloc
-        backend_url = f"{proto}://{host}"
-        
-    redirect_uri = f"{backend_url.rstrip('/')}/config/github/callback"
+    # Determine the redirect URI (override via env, or construct dynamically)
+    redirect_uri = os.getenv("GITHUB_REDIRECT_URI")
+    if not redirect_uri:
+        backend_url = os.getenv("BACKEND_URL")
+        if not backend_url:
+            # Fallback to request's base URL, respecting proxy headers if possible
+            proto = request.headers.get("x-forwarded-proto", "http")
+            host = request.headers.get("x-forwarded-host") or request.url.netloc
+            backend_url = f"{proto}://{host}"
+        redirect_uri = f"{backend_url.rstrip('/')}/config/github/callback"
     auth_url = f"https://github.com/login/oauth/authorize?client_id={client_id}&redirect_uri={redirect_uri}&scope=repo,user&prompt=select_account"
     if clerk_id:
         auth_url += f"&state={clerk_id}"
