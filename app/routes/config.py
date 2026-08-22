@@ -260,6 +260,8 @@ def github_authorize(request: Request, current_user: dict = Depends(get_current_
             host = request.headers.get("x-forwarded-host") or request.url.netloc
             backend_url = f"{proto}://{host}"
         redirect_uri = f"{backend_url.rstrip('/')}/config/github/callback"
+        
+    print(f"[Config] GitHub Authorize: client_id={client_id}, redirect_uri={redirect_uri}")
     auth_url = f"https://github.com/login/oauth/authorize?client_id={client_id}&redirect_uri={redirect_uri}&scope=repo,user&prompt=select_account"
     if clerk_id:
         auth_url += f"&state={clerk_id}"
