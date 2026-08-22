@@ -97,7 +97,7 @@ class MCPClientManager:
             import httpx
             try:
                 headers = {
-                    "Authorization": f"token {github_token}",
+                    "Authorization": f"Bearer {github_token}",
                     "Accept": "application/vnd.github.v3+json"
                 }
                 async with httpx.AsyncClient() as client:
