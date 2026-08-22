@@ -260,9 +260,22 @@ def github_authorize(request: Request, current_user: dict = Depends(get_current_
             host = request.headers.get("x-forwarded-host") or request.url.netloc
             backend_url = f"{proto}://{host}"
         redirect_uri = f"{backend_url.rstrip('/')}/config/github/callback"
-    auth_url = f"https://github.com/login/oauth/authorize?client_id={client_id}&redirect_uri={redirect_uri}&scope=repo,user&prompt=select_account"
-    if clerk_id:
-        auth_url += f"&state={clerk_id}"
+        
+    # Determine originating frontend URL
+    origin = request.headers.get("origin") or request.headers.get("referer")
+    frontend_url = None
+    if origin:
+        from urllib.parse import urlparse
+        parsed = urlparse(origin)
+        frontend_url = f"{parsed.scheme}://{parsed.netloc}"
+    if not frontend_url:
+        frontend_url = os.getenv("FRONTEND_URL", "http://localhost:3000")
+        
+    print(f"[Config] GitHub Authorize: client_id={client_id}, redirect_uri={redirect_uri}")
+    
+    # Pack clerk_id and frontend_url in state
+    state_data = f"{clerk_id or 'none'}|{frontend_url}"
+    auth_url = f"https://github.com/login/oauth/authorize?client_id={client_id}&redirect_uri={redirect_uri}&scope=repo,user&prompt=select_account&state={state_data}"
         
     return {"url": auth_url}
 
@@ -271,8 +284,20 @@ def github_authorize(request: Request, current_user: dict = Depends(get_current_
 async def github_callback(code: str, state: Optional[str] = None):
     client_id = os.getenv("GITHUB_CLIENT_ID")
     client_secret = os.getenv("GITHUB_CLIENT_SECRET")
+    
+    clerk_id = None
     frontend_url = os.getenv("FRONTEND_URL", "http://localhost:3000")
     
+    if state:
+        if "|" in state:
+            state_clerk, state_frontend = state.split("|", 1)
+            if state_clerk != "none":
+                clerk_id = state_clerk
+            if state_frontend:
+                frontend_url = state_frontend
+        else:
+            clerk_id = state
+            
     if not client_id or not client_secret:
         print("[Config] GitHub client credentials missing in environment")
         return RedirectResponse(url=f"{frontend_url}/workspace/connectors?error=oauth_not_configured")
@@ -294,17 +319,17 @@ async def github_callback(code: str, state: Optional[str] = None):
                 access_token = res_data["access_token"]
                 
                 # Update user-specifically if state is present, otherwise fallback to global
-                if state:
+                if clerk_id:
                     users_coll = get_user_collection()
                     await users_coll.update_one(
-                        {"clerk_id": state},
+                        {"clerk_id": clerk_id},
                         {"$set": {"github_token": access_token}}
                     )
                     # Trigger reload of MCP Connectors for this user
                     try:
                         from app.mcp.client_manager import mcp_client_manager
-                        updated_user = await users_coll.find_one({"clerk_id": state})
-                        asyncio.create_task(mcp_client_manager.reload_for_user(state, updated_user))
+                        updated_user = await users_coll.find_one({"clerk_id": clerk_id})
+                        asyncio.create_task(mcp_client_manager.reload_for_user(clerk_id, updated_user))
                     except Exception as reload_err:
                         print(f"[Config] Failed to reload MCP Connectors for user: {reload_err}")
                 else:
