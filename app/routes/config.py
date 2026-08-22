@@ -4,7 +4,7 @@ import time
 import asyncio
 import httpx
 import jwt
-from fastapi import APIRouter, UploadFile, File, HTTPException, Depends
+from fastapi import APIRouter, UploadFile, File, HTTPException, Depends, Request
 from fastapi.responses import StreamingResponse, RedirectResponse
 from app.core.security import get_current_user
 from typing import Optional
@@ -242,7 +242,7 @@ async def ingest_stream():
 
 
 @router.post("/github/authorize")
-def github_authorize(current_user: dict = Depends(get_current_user)):
+def github_authorize(request: Request, current_user: dict = Depends(get_current_user)):
     client_id = os.getenv("GITHUB_CLIENT_ID")
     if not client_id:
         print("[Config] GitHub Client ID missing in environment")
@@ -250,8 +250,15 @@ def github_authorize(current_user: dict = Depends(get_current_user)):
     
     clerk_id = current_user.get("clerk_id")
     
-    # Redirect to GitHub authorization screen
-    redirect_uri = "http://localhost:8000/config/github/callback"
+    # Determine the backend base URL dynamically
+    backend_url = os.getenv("BACKEND_URL")
+    if not backend_url:
+        # Fallback to request's base URL, respecting proxy headers if possible
+        proto = request.headers.get("x-forwarded-proto", "http")
+        host = request.headers.get("x-forwarded-host") or request.url.netloc
+        backend_url = f"{proto}://{host}"
+        
+    redirect_uri = f"{backend_url.rstrip('/')}/config/github/callback"
     auth_url = f"https://github.com/login/oauth/authorize?client_id={client_id}&redirect_uri={redirect_uri}&scope=repo,user&prompt=select_account"
     if clerk_id:
         auth_url += f"&state={clerk_id}"
