@@ -62,18 +62,31 @@ class MCPClientManager:
         cid_label = clerk_id if clerk_id else "global"
         logger.info(f"🔌 Initializing MCP Client Connectors for user {cid_label}...")
 
-        # Resolve credentials. Fallback to global settings if user_doc is not provided
+        # Resolve credentials. Fallback to global settings if user_doc/connector_doc is not provided
         from app.core.config import settings
         rag_config = settings.load_rag_config()
 
-        if user_doc:
-            github_token = user_doc.get("github_token") or os.getenv("GITHUB_PERSONAL_ACCESS_TOKEN")
-            slack_token = user_doc.get("slack_token") or os.getenv("SLACK_BOT_TOKEN")
-            slack_team_id = user_doc.get("slack_team_id") or os.getenv("SLACK_TEAM_ID") or "T00000000"
-            gmail_id = user_doc.get("gmail_client_id") or os.getenv("GMAIL_CLIENT_ID")
-            gmail_secret = user_doc.get("gmail_client_secret") or os.getenv("GMAIL_CLIENT_SECRET")
-            gmail_refresh = user_doc.get("gmail_refresh_token") or os.getenv("GMAIL_REFRESH_TOKEN")
-            apify_token = user_doc.get("apify_token") or os.getenv("APIFY_TOKEN")
+        connector_doc = None
+        if clerk_id:
+            try:
+                from app.db.mongodb import get_connector_collection
+                conn_coll = get_connector_collection()
+                connector_doc = await conn_coll.find_one({"clerk_id": clerk_id})
+            except Exception as db_err:
+                logger.error(f"⚠️ Failed to query connectors collection for user {clerk_id}: {db_err}")
+
+        # Fallback to passed user_doc if query returned nothing
+        if not connector_doc and user_doc:
+            connector_doc = user_doc
+
+        if connector_doc:
+            github_token = connector_doc.get("github_token") or os.getenv("GITHUB_PERSONAL_ACCESS_TOKEN")
+            slack_token = connector_doc.get("slack_token") or os.getenv("SLACK_BOT_TOKEN")
+            slack_team_id = connector_doc.get("slack_team_id") or os.getenv("SLACK_TEAM_ID") or "T00000000"
+            gmail_id = connector_doc.get("gmail_client_id") or os.getenv("GMAIL_CLIENT_ID")
+            gmail_secret = connector_doc.get("gmail_client_secret") or os.getenv("GMAIL_CLIENT_SECRET")
+            gmail_refresh = connector_doc.get("gmail_refresh_token") or os.getenv("GMAIL_REFRESH_TOKEN")
+            apify_token = connector_doc.get("apify_token") or os.getenv("APIFY_TOKEN")
         else:
             github_token = os.getenv("GITHUB_PERSONAL_ACCESS_TOKEN") or rag_config.get("github_token")
             slack_token = os.getenv("SLACK_BOT_TOKEN") or rag_config.get("slack_token")

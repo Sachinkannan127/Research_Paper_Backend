@@ -25,6 +25,9 @@ def get_user_collection():
 def get_profile_collection():
     return db_instance.client["rag_db"]["profiles"]
 
+def get_connector_collection():
+    return db_instance.client["rag_db"]["connectors"]
+
 def get_vector_collection():
     db_name = getattr(settings, "DB_NAME", None) or "rag_db"
     return db_instance.client[db_name]["vector_documents"]

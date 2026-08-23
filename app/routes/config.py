@@ -50,17 +50,22 @@ async def get_stats():
     }
 
 @router.get("", dependencies=[Depends(get_current_user)])
-def get_config(current_user: dict = Depends(get_current_user)):
+async def get_config(current_user: dict = Depends(get_current_user)):
     config = settings.load_rag_config()
     
-    # Retrieve user-specific tokens from MongoDB user doc ONLY
-    github_token = current_user.get("github_token")
-    slack_token = current_user.get("slack_token")
-    slack_team_id = current_user.get("slack_team_id")
-    gmail_client_id = current_user.get("gmail_client_id")
-    gmail_client_secret = current_user.get("gmail_client_secret")
-    gmail_refresh_token = current_user.get("gmail_refresh_token")
-    apify_token = current_user.get("apify_token")
+    # Retrieve user-specific tokens from MongoDB connectors collection
+    clerk_id = current_user.get("clerk_id")
+    from app.db.mongodb import get_connector_collection
+    conn_coll = get_connector_collection()
+    connector_doc = await conn_coll.find_one({"clerk_id": clerk_id}) or {}
+    
+    github_token = connector_doc.get("github_token")
+    slack_token = connector_doc.get("slack_token")
+    slack_team_id = connector_doc.get("slack_team_id")
+    gmail_client_id = connector_doc.get("gmail_client_id")
+    gmail_client_secret = connector_doc.get("gmail_client_secret")
+    gmail_refresh_token = connector_doc.get("gmail_refresh_token")
+    apify_token = connector_doc.get("apify_token")
     
     return {
         "active_pdf_name": config.get("active_pdf_name", "Research_paper.pdf"),
@@ -88,8 +93,9 @@ async def update_config(data: ConfigUpdate, current_user: dict = Depends(get_cur
         
     settings.save_rag_config(config)
 
-    # Save user-specific fields to user doc in DB
-    users_coll = get_user_collection()
+    # Save user-specific fields to connectors collection in DB
+    from app.db.mongodb import get_connector_collection
+    conn_coll = get_connector_collection()
     clerk_id = current_user.get("clerk_id")
     
     user_updates = {}
@@ -127,13 +133,13 @@ async def update_config(data: ConfigUpdate, current_user: dict = Depends(get_cur
         user_updates["apify_token"] = None
         
     if user_updates:
-        await users_coll.update_one({"clerk_id": clerk_id}, {"$set": user_updates})
+        await conn_coll.update_one({"clerk_id": clerk_id}, {"$set": user_updates}, upsert=True)
         
         # Trigger reload of MCP Connectors for this user
         try:
             from app.mcp.client_manager import mcp_client_manager
-            updated_user = await users_coll.find_one({"clerk_id": clerk_id})
-            asyncio.create_task(mcp_client_manager.reload_for_user(clerk_id, updated_user))
+            updated_connector = await conn_coll.find_one({"clerk_id": clerk_id})
+            asyncio.create_task(mcp_client_manager.reload_for_user(clerk_id, updated_connector))
         except Exception as reload_err:
             print(f"[Config] Failed to reload MCP Connectors for user: {reload_err}")
             
@@ -320,16 +326,18 @@ async def github_callback(code: str, state: Optional[str] = None):
                 
                 # Update user-specifically if state is present, otherwise fallback to global
                 if clerk_id:
-                    users_coll = get_user_collection()
-                    await users_coll.update_one(
+                    from app.db.mongodb import get_connector_collection
+                    conn_coll = get_connector_collection()
+                    await conn_coll.update_one(
                         {"clerk_id": clerk_id},
-                        {"$set": {"github_token": access_token}}
+                        {"$set": {"github_token": access_token}},
+                        upsert=True
                     )
                     # Trigger reload of MCP Connectors for this user
                     try:
                         from app.mcp.client_manager import mcp_client_manager
-                        updated_user = await users_coll.find_one({"clerk_id": clerk_id})
-                        asyncio.create_task(mcp_client_manager.reload_for_user(clerk_id, updated_user))
+                        updated_connector = await conn_coll.find_one({"clerk_id": clerk_id})
+                        asyncio.create_task(mcp_client_manager.reload_for_user(clerk_id, updated_connector))
                     except Exception as reload_err:
                         print(f"[Config] Failed to reload MCP Connectors for user: {reload_err}")
                 else:
