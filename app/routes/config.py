@@ -257,8 +257,21 @@ def github_authorize(request: Request, current_user: dict = Depends(get_current_
     clerk_id = current_user.get("clerk_id")
     
     # Determine the redirect URI (override via env, or construct dynamically)
-    redirect_uri = os.getenv("GITHUB_REDIRECT_URI")
-    if not redirect_uri:
+    redirect_uri_env = os.getenv("GITHUB_REDIRECT_URI")
+    if redirect_uri_env:
+        # If it is a comma-separated list, find the one that matches the request host
+        if "," in redirect_uri_env:
+            uris = [u.strip() for u in redirect_uri_env.split(",") if u.strip()]
+            request_host = request.url.netloc  # e.g. "127.0.0.1:8000" or "192.168.1.176:8000"
+            matched = None
+            for u in uris:
+                if request_host in u:
+                    matched = u
+                    break
+            redirect_uri = matched or uris[0]
+        else:
+            redirect_uri = redirect_uri_env
+    else:
         backend_url = os.getenv("BACKEND_URL")
         if not backend_url:
             # Fallback to request's base URL, respecting proxy headers if possible
