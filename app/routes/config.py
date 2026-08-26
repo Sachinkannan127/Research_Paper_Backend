@@ -268,7 +268,14 @@ def github_authorize(request: Request, current_user: dict = Depends(get_current_
                 if request_host in u:
                     matched = u
                     break
-            redirect_uri = matched or uris[0]
+            
+            if matched:
+                redirect_uri = matched
+            else:
+                # If request host does not match local list (e.g. in production), construct dynamically
+                proto = request.headers.get("x-forwarded-proto", "http")
+                host = request.headers.get("x-forwarded-host") or request.url.netloc
+                redirect_uri = f"{proto}://{host}/config/github/callback"
         else:
             redirect_uri = redirect_uri_env
     else:
