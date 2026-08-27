@@ -22,7 +22,8 @@ def verify_clerk_token(token: str) -> dict:
             token,
             signing_key.key,
             algorithms=["RS256"],
-            options={"verify_exp": True}
+            options={"verify_exp": True},
+            leeway=timedelta(seconds=10)
         )
         return data
     except Exception as e:
