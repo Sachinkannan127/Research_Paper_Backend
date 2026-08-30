@@ -39,6 +39,7 @@ origins = [
     "https://research-paper-frontend-sable.vercel.app/",
     "https://research-paper-frontend-theta.vercel.app",
     "https://research-paper-frontend-theta.vercel.app/",
+    "https://research-paper-frontend-seven.vercel.app",
     "http://localhost:3001",
     "https://localhost:3001",
     "http://127.0.0.1:3001",
