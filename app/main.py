@@ -34,7 +34,7 @@ app = FastAPI(title="Research Paper Assistant", version="1.0.0", lifespan=lifesp
 
 # Allow specific origins (Vercel production frontend, Render backend, and local dev server)
 origins = [
-    "https://research-paper-assistant-ylic.onrender.com",
+    "https://research-paper-backend-1ub4.onrender.com",
     "https://research-paper-frontend-sable.vercel.app",
     "https://research-paper-frontend-sable.vercel.app/",
     "https://research-paper-frontend-theta.vercel.app",
