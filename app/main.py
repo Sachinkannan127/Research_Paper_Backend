@@ -52,7 +52,9 @@ origins = [
     "http://127.0.0.1:3000",
     "https://127.0.0.1:3000",
     "http://localhost:5173",
-    "https://localhost:5173", ]
+    "https://localhost:5173",
+    "http://127.0.0.1:5173",
+    "https://127.0.0.1:5173", ]
 
 # Allow any additional custom origins defined in environment variables
 allowed_origins_env = os.getenv("ALLOWED_ORIGINS")
