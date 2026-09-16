@@ -109,9 +109,11 @@ async def verify_auth(payload: VerifyRequest, response: Response):
         raise
     except Exception as db_err:
         logger.error(f"Database error during verify_auth: {db_err}")
+        db_url = settings.MONGO_DB_URL or ""
+        target_host = db_url.split("@")[-1] if "@" in db_url else "UNKNOWN_HOST"
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail=f"Database error: {str(db_err)}"
+            detail=f"Database error (Host: {target_host}): {str(db_err)}. Please update MONGO_DB_URL on Render Dashboard."
         )
     
     return {
