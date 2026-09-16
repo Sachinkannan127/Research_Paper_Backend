@@ -44,66 +44,75 @@ async def verify_auth(payload: VerifyRequest, response: Response):
     email = payload.email or clerk_data.get("email") or (clerk_data.get("emails", [""])[0] if isinstance(clerk_data.get("emails"), list) else "")
     name = payload.name or clerk_data.get("name") or clerk_data.get("username") or ""
     
-    users_coll = get_user_collection()
-    profiles_coll = get_profile_collection()
-    
-    # 2. Check if user already exists
-    user = await users_coll.find_one({"clerk_id": clerk_id})
-    if not user:
-        # Create new user
-        new_user = {
-            "clerk_id": clerk_id,
-            "is_verified": True,
-            "is_banned": False,
-            "hashed_refresh_token": None
-        }
-        await users_coll.insert_one(new_user)
-        user = new_user
-    else:
-        if user.get("is_banned"):
-            raise HTTPException(
-                status_code=status.HTTP_403_FORBIDDEN,
-                detail="User is banned"
-            )
-    
-    # Update or insert profile on every verification to keep it synchronized
-    profile_data = {
-        "updated_at": clerk_data.get("iat")
-    }
-    if email:
-        profile_data["email"] = email
-    if name:
-        profile_data["name"] = name
+    try:
+        users_coll = get_user_collection()
+        profiles_coll = get_profile_collection()
         
-    await profiles_coll.update_one(
-        {"clerk_id": clerk_id},
-        {"$set": profile_data},
-        upsert=True
-    )
-    
-    # 3. Generate new Access and Refresh tokens
-    access_token = generate_access_token(clerk_id)
-    refresh_token = generate_refresh_token(clerk_id)
-    
-    # 4. Hash and save the Refresh token in users collection
-    hashed_refresh = hash_token(refresh_token)
-    await users_coll.update_one(
-        {"clerk_id": clerk_id},
-        {"$set": {"hashed_refresh_token": hashed_refresh}}
-    )
-    
-    # 5. Store Refresh token in Cookie
-    response.set_cookie(
-        key="refresh_token",
-        value=refresh_token,
-        httponly=True,
-        secure=True,
-        samesite="lax", # Lax for development, can be None for cross-site
-        max_age=settings.REFRESH_TOKEN_EXPIRE_DAYS * 24 * 60 * 60
-    )
-    
-    # Get profile info to return
-    profile = await profiles_coll.find_one({"clerk_id": clerk_id})
+        # 2. Check if user already exists
+        user = await users_coll.find_one({"clerk_id": clerk_id})
+        if not user:
+            # Create new user
+            new_user = {
+                "clerk_id": clerk_id,
+                "is_verified": True,
+                "is_banned": False,
+                "hashed_refresh_token": None
+            }
+            await users_coll.insert_one(new_user)
+            user = new_user
+        else:
+            if user.get("is_banned"):
+                raise HTTPException(
+                    status_code=status.HTTP_403_FORBIDDEN,
+                    detail="User is banned"
+                )
+        
+        # Update or insert profile on every verification to keep it synchronized
+        profile_data = {
+            "updated_at": clerk_data.get("iat")
+        }
+        if email:
+            profile_data["email"] = email
+        if name:
+            profile_data["name"] = name
+            
+        await profiles_coll.update_one(
+            {"clerk_id": clerk_id},
+            {"$set": profile_data},
+            upsert=True
+        )
+        
+        # 3. Generate new Access and Refresh tokens
+        access_token = generate_access_token(clerk_id)
+        refresh_token = generate_refresh_token(clerk_id)
+        
+        # 4. Hash and save the Refresh token in users collection
+        hashed_refresh = hash_token(refresh_token)
+        await users_coll.update_one(
+            {"clerk_id": clerk_id},
+            {"$set": {"hashed_refresh_token": hashed_refresh}}
+        )
+        
+        # 5. Store Refresh token in Cookie
+        response.set_cookie(
+            key="refresh_token",
+            value=refresh_token,
+            httponly=True,
+            secure=True,
+            samesite="lax", # Lax for development, can be None for cross-site
+            max_age=settings.REFRESH_TOKEN_EXPIRE_DAYS * 24 * 60 * 60
+        )
+        
+        # Get profile info to return
+        profile = await profiles_coll.find_one({"clerk_id": clerk_id})
+    except HTTPException:
+        raise
+    except Exception as db_err:
+        logger.error(f"Database error during verify_auth: {db_err}")
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Database error: {str(db_err)}"
+        )
     
     return {
         "access_token": access_token,
