@@ -209,14 +209,19 @@ async def clear_database():
         raise HTTPException(status_code=500, detail=f"Failed to clear database: {str(e)}")
 
 @router.get("/ingest/stream", dependencies=[Depends(get_current_user)])
-async def ingest_stream():
+async def ingest_stream(current_user: dict = Depends(get_current_user)):
     async def _stream_ingest():
+        clerk_id = current_user.get("clerk_id")
+        users_coll = get_user_collection()
+        user_doc = await users_coll.find_one({"clerk_id": clerk_id}) or {}
+        
         config = settings.load_rag_config()
-        pdf_path = config.get("active_pdf_path")
+        pdf_path = user_doc.get("active_pdf_path") or config.get("active_pdf_path")
+        pdf_name = user_doc.get("active_pdf_name") or config.get("active_pdf_name", "Research_paper.pdf")
         
         if not pdf_path or not os.path.exists(pdf_path):
             yield "__STEP__:text_extract:failed\n"
-            yield f"Error: Active PDF file not found at {pdf_path}\n"
+            yield f"Error: Active PDF file not found at {pdf_path}. Please re-upload your PDF file.\n"
             return
             
         try:
@@ -224,25 +229,39 @@ async def ingest_stream():
             
             # Step 1: Text extraction
             yield "__STEP__:text_extract:active\n"
-            time.sleep(0.3)
-            # Text extraction runs as part of chunking, but we status check here
+            await asyncio.sleep(0.1)
             yield "__STEP__:text_extract:done\n"
             
             # Step 2: Chunking
             yield "__STEP__:chunking:active\n"
-            time.sleep(0.3)
+            await asyncio.sleep(0.1)
             chunks = chunk_text(pdf_path)
             yield "__STEP__:chunking:done\n"
             
             # Step 3: Embeddings
             yield "__STEP__:embedding:active\n"
             embeddings_service = EmbeddingModel()
-            embeddings = await embeddings_service.embed_texts(chunks)
+            
+            # Batch embeddings and yield keepalive comments to prevent proxy disconnection
+            batch_size = 15
+            embeddings = []
+            total_chunks = len(chunks)
+            
+            for i in range(0, total_chunks, batch_size):
+                batch_chunks = chunks[i:i + batch_size]
+                yield f": keepalive batch {i // batch_size + 1}\n"
+                
+                batch_embeddings = await embeddings_service.embed_texts(batch_chunks, batch_size=batch_size)
+                embeddings.extend(batch_embeddings)
+                
+                yield f": keepalive {len(embeddings)}/{total_chunks}\n"
+                await asyncio.sleep(0.1)
+                
             yield "__STEP__:embedding:done\n"
             
             # Step 4: Vector store
             yield "__STEP__:vector_store:active\n"
-            time.sleep(0.3)
+            await asyncio.sleep(0.1)
             
             # Clear database first so we don't mix documents
             await db.delete_all()
@@ -257,7 +276,7 @@ async def ingest_stream():
                 metadatas=metadatas
             )
             yield "__STEP__:vector_store:done\n"
-            yield f"Successfully ingested {len(chunks)} chunks from {config.get('active_pdf_name')}\n"
+            yield f"Successfully ingested {len(chunks)} chunks from {pdf_name}\n"
             
         except Exception as e:
             yield f"Error: Ingestion failed due to {str(e)}\n"
