@@ -55,6 +55,9 @@ async def get_config(current_user: dict = Depends(get_current_user)):
     
     # Retrieve user-specific tokens from MongoDB connectors collection
     clerk_id = current_user.get("clerk_id")
+    users_coll = get_user_collection()
+    user_doc = await users_coll.find_one({"clerk_id": clerk_id}) or {}
+    
     from app.db.mongodb import get_connector_collection
     conn_coll = get_connector_collection()
     connector_doc = await conn_coll.find_one({"clerk_id": clerk_id}) or {}
@@ -67,8 +70,10 @@ async def get_config(current_user: dict = Depends(get_current_user)):
     gmail_refresh_token = connector_doc.get("gmail_refresh_token")
     apify_token = connector_doc.get("apify_token")
     
+    active_pdf = user_doc.get("active_pdf_name") or config.get("active_pdf_name", "Research_paper.pdf")
+    
     return {
-        "active_pdf_name": config.get("active_pdf_name", "Research_paper.pdf"),
+        "active_pdf_name": active_pdf,
         "system_prompt": config.get("system_prompt", ""),
         "welcome_message": config.get("welcome_message", ""),
         "similarity_metric": config.get("similarity_metric", "cosine"),
@@ -155,7 +160,7 @@ async def update_config(data: ConfigUpdate, current_user: dict = Depends(get_cur
 
 
 @router.post("/upload", dependencies=[Depends(get_current_user)])
-async def upload_pdf(file: UploadFile = File(...)):
+async def upload_pdf(file: UploadFile = File(...), current_user: dict = Depends(get_current_user)):
     if not file.filename.endswith(".pdf"):
         raise HTTPException(status_code=400, detail="Only PDF files are supported")
     
@@ -174,6 +179,15 @@ async def upload_pdf(file: UploadFile = File(...)):
     config["active_pdf_name"] = file.filename
     config["active_pdf_path"] = file_path
     settings.save_rag_config(config)
+    
+    clerk_id = current_user.get("clerk_id")
+    if clerk_id:
+        users_coll = get_user_collection()
+        await users_coll.update_one(
+            {"clerk_id": clerk_id},
+            {"$set": {"active_pdf_name": file.filename, "active_pdf_path": file_path}},
+            upsert=True
+        )
     
     return {
         "status": "success",
