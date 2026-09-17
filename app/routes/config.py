@@ -70,7 +70,11 @@ async def get_config(current_user: dict = Depends(get_current_user)):
     gmail_refresh_token = connector_doc.get("gmail_refresh_token")
     apify_token = connector_doc.get("apify_token")
     
-    active_pdf = user_doc.get("active_pdf_name") or config.get("active_pdf_name", "Research_paper.pdf")
+    raw_active_pdf = user_doc.get("active_pdf_name") or config.get("active_pdf_name")
+    if not raw_active_pdf or raw_active_pdf in ["Research_paper.pdf", "Research_paper_3.pdf"]:
+        active_pdf = "No PDF Uploaded"
+    else:
+        active_pdf = raw_active_pdf
     
     return {
         "active_pdf_name": active_pdf,
