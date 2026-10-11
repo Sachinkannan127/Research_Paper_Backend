@@ -103,6 +103,8 @@ def landing_page():
     }
 
 @app.api_route("/health", methods=["GET", "HEAD"])
+@app.api_route("/api/health", methods=["GET", "HEAD"])
+@app.api_route("/api/ping", methods=["GET", "HEAD"])
 def health_check():
     return {
         "status": "Naa Nalla Irukken"
